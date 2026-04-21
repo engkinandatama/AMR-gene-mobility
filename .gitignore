@@ -4,6 +4,7 @@ data/contigs/*
 !data/contigs/.gitkeep
 data/metadata/*
 !data/metadata/.gitkeep
+!data/metadata/sample_map.csv
 results/
 logs/
 plan/
