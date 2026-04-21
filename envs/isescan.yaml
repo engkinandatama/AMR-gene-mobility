@@ -1,0 +1,7 @@
+name: isescan
+channels:
+  - bioconda
+  - conda-forge
+  - defaults
+dependencies:
+  - isescan

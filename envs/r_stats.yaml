@@ -1,0 +1,18 @@
+name: r_stats
+channels:
+  - conda-forge
+  - bioconda
+  - defaults
+dependencies:
+  - r-base>=4.2
+  - r-dplyr
+  - r-tidyr
+  - r-ggplot2
+  - r-vegan
+  - r-dunn.test
+  - r-kableextra
+  - r-ggraph
+  - r-igraph
+  - r-rcolorbrewer
+  - bioconductor-complexheatmap
+  - r-writexl
