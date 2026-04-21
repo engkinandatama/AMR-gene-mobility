@@ -1,7 +1,12 @@
 name: integronfinder
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
-  - integronfinder
+  - python>=3.8
+  - pip
+  - hmmer      # dependency IntegronFinder
+  - prodigal   # dependency IntegronFinder
+  - pip:
+    - integronfinder
