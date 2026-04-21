@@ -138,7 +138,7 @@ rule run_mobsuite:
             --outdir results/mobsuite/{wildcards.sample}_dir \
             --num_threads {threads} >> {log} 2>&1
 
-        cp results/mobsuite/{wildcards.sample}_dir/mob_recon_report.txt {output.report}
+        cp results/mobsuite/{wildcards.sample}_dir/contig_report.txt {output.report}
         echo "[MOBsuite] Selesai." | tee -a {log}
         """
 
