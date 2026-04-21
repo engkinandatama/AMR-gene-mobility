@@ -9,4 +9,4 @@ dependencies:
   - hmmer      # dependency IntegronFinder
   - prodigal   # dependency IntegronFinder
   - pip:
-    - integronfinder
+    - integron_finder
