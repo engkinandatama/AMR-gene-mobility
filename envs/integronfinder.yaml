@@ -4,10 +4,4 @@ channels:
   - bioconda
   - defaults
 dependencies:
-  - python>=3.8
-  - pip
-  - hmmer      # dependency IntegronFinder
-  - prodigal   # dependency IntegronFinder
-  - infernal   # dependency IntegronFinder (cmsearch)
-  - pip:
-    - integron_finder
+  - integron_finder
