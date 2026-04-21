@@ -1,0 +1,17 @@
+# Data and temporary files
+.snakemake/
+data/contigs/*
+!data/contigs/.gitkeep
+data/metadata/*
+!data/metadata/.gitkeep
+results/
+logs/
+plan/
+
+# Environments
+amr-env/
+
+# System files
+.DS_Store
+Thumbs.db
+*.log
