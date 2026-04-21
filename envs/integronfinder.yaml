@@ -8,5 +8,6 @@ dependencies:
   - pip
   - hmmer      # dependency IntegronFinder
   - prodigal   # dependency IntegronFinder
+  - infernal   # dependency IntegronFinder (cmsearch)
   - pip:
     - integron_finder
