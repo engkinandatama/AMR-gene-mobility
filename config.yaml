@@ -5,7 +5,7 @@
 # JANGAN edit Snakefile langsung kecuali untuk perubahan logika.
 #
 # Cara pakai:
-#   snakemake phase3 --cores all --use-conda --configfile config.yaml
+#   snakemake phase3 --cores 32 --use-conda --configfile config.yaml
 # ============================================================
 
 # ------------------------------------------------------------
@@ -18,20 +18,37 @@ paths:
   logs_dir:      "logs"
 
 # ------------------------------------------------------------
-# RESOURCES — Sesuaikan dengan kapasitas HPC / Laptop Anda
+# RESOURCES — Dikonfigurasi untuk HPC 32 Core
 # ------------------------------------------------------------
+#
+# Strategi Paralelisme (--cores 32):
+#
+#   Snakemake menjalankan job secara paralel selama total thread
+#   tidak melebihi batas --cores yang diberikan.
+#
+#   Dengan 3 sampel dan 4 tool, Snakemake akan menjadwalkan:
+#   ┌─────────────────┬─────────┬───────────────────────────────┐
+#   │ Tool            │ Thread  │ Paralelisme (3 sampel)        │
+#   ├─────────────────┼─────────┼───────────────────────────────┤
+#   │ RGI             │ 8       │ 3 × 8 = 24 core (jalan semua) │
+#   │ MOBsuite        │ 4       │ 3 × 4 = 12 core               │
+#   │ IntegronFinder  │ 4       │ 3 × 4 = 12 core               │
+#   │ ISEScan         │ 4       │ 3 × 4 = 12 core               │
+#   └─────────────────┴─────────┴───────────────────────────────┘
+#   Semua 3 sampel RGI jalan BERSAMAAN (24/32 core terpakai).
+#   Sisa 8 core: Snakemake langsung mulai MOBsuite/Integron/ISEScan.
+#
+#   Untuk LAPTOP (ganti semua threads_* menjadi 2):
 resources:
-  # Jumlah CPU thread untuk masing-masing tool
-  # Rekomendasi HPC : rgi=8, mob=4, integron=4, isescan=4
-  # Rekomendasi Laptop : semua = 2
-  threads_rgi:         4
-  threads_mobsuite:    4
-  threads_integron:    2
-  threads_isescan:     2
-  threads_stats:       2
+  threads_rgi:         8     # Paling berat (BLAST) — beri paling banyak
+  threads_mobsuite:    4     # Sedang
+  threads_integron:    4     # Ringan, tapi bantu analisis integron lebih cepat
+  threads_isescan:     4     # Ringan
+  threads_stats:       4     # R stats (Phase 4 & 5)
 
-  # Maksimal memory (MB) — digunakan untuk MEGAHIT jika nanti dimasukkan
-  max_memory_mb:    16000
+  # Alokasi memory maksimum (MB) per job — pastikan tidak melebihi RAM HPC
+  # HPC 32 core biasanya punya 64–256 GB RAM; nilai ini aman untuk BLAST
+  max_memory_mb:    32000
 
 # ------------------------------------------------------------
 # RGI (Resistance Gene Identifier)
