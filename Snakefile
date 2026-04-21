@@ -3,50 +3,52 @@
 # ============================================================
 configfile: "config.yaml"
 
-
+"""
 Snakefile: AMR Gene Mobility Pipeline
-Versi: 3.0 (V3 - Full Comprehensive Pipeline)
+Versi: 3.1 (V3 - Syntax Fixed)
 
 Cara penggunaan:
   HPC / Lokal (Phase 3 saja):
     snakemake phase3 --cores all --use-conda
 
-  Statistik & Network (Phase 4 & 5, jalankan setelah Phase 3 selesai):
+  Statistik & Network (Phase 4 & 5):
     snakemake phase4 --cores 4 --use-conda
     snakemake phase5 --cores 4 --use-conda
 
   Semua sekaligus:
     snakemake all --cores all --use-conda
+
+  Dry-run (validasi pipeline):
+    snakemake phase3 --dry-run --cores 4
 """
 
 import pandas as pd
 import os
+import glob as glob_mod
 
 SAMPLE_MAP_FILE = config["paths"]["sample_map"]
-
 
 if os.path.exists(SAMPLE_MAP_FILE):
     sample_df = pd.read_csv(SAMPLE_MAP_FILE)
     SAMPLES = sample_df["sample_id"].tolist()
 else:
     # Fallback: deteksi otomatis dari file .fasta yang sudah ada
-    import glob
     SAMPLES = [os.path.basename(f).replace(".fasta", "")
-               for f in glob.glob("data/contigs/*.fasta")]
+               for f in glob_mod.glob("data/contigs/*.fasta")]
 
 print(f"[Snakemake] Sampel terdeteksi: {SAMPLES}")
 
 # ============================================================
-# TARGET RULES (Entrypoint)
+# TARGET RULES (Entrypoints)
 # ============================================================
 
 rule all:
     """Target utama: jalankan seluruh pipeline end-to-end."""
     input:
-        expand("results/rgi/{sample}_rgi.txt",         sample=SAMPLES),
-        expand("results/mobsuite/{sample}_plasmid.txt", sample=SAMPLES),
+        expand("results/rgi/{sample}_rgi.txt",            sample=SAMPLES),
+        expand("results/mobsuite/{sample}_plasmid.txt",   sample=SAMPLES),
         expand("results/integron/{sample}_integrons.tsv", sample=SAMPLES),
-        expand("results/isescan/{sample}_is.tsv",      sample=SAMPLES),
+        expand("results/isescan/{sample}_is.tsv",         sample=SAMPLES),
         "results/colocalization_summary.csv",
         "results/amr_abundance_matrix.csv",
         "results/figures/Fig2_MGE_distribution.pdf",
@@ -55,15 +57,15 @@ rule all:
 rule phase3:
     """Jalankan hanya deteksi AMR + MGE + integrasi data."""
     input:
-        expand("results/rgi/{sample}_rgi.txt",           sample=SAMPLES),
-        expand("results/mobsuite/{sample}_plasmid.txt",  sample=SAMPLES),
-        expand("results/integron/{sample}_integrons.tsv",sample=SAMPLES),
-        expand("results/isescan/{sample}_is.tsv",        sample=SAMPLES),
+        expand("results/rgi/{sample}_rgi.txt",            sample=SAMPLES),
+        expand("results/mobsuite/{sample}_plasmid.txt",   sample=SAMPLES),
+        expand("results/integron/{sample}_integrons.tsv", sample=SAMPLES),
+        expand("results/isescan/{sample}_is.tsv",         sample=SAMPLES),
         "results/colocalization_summary.csv",
         "results/amr_abundance_matrix.csv"
 
 rule phase4:
-    """Jalankan statistik dan visualisasi saja (setelah Phase 3 selesai)."""
+    """Jalankan statistik dan visualisasi (setelah Phase 3 selesai)."""
     input:
         "results/figures/Fig2_MGE_distribution.pdf"
 
@@ -84,7 +86,10 @@ rule run_rgi:
     input:
         fasta = "data/contigs/{sample}.fasta"
     output:
-        rgi   = "results/rgi/{sample}_rgi.txt"
+        rgi = "results/rgi/{sample}_rgi.txt"
+    params:
+        input_type     = config["rgi"]["input_type"],
+        alignment_tool = config["rgi"]["alignment_tool"]
     conda:
         "envs/rgi.yaml"
     log:
@@ -93,12 +98,12 @@ rule run_rgi:
     shell:
         """
         echo "[RGI] Memproses {wildcards.sample}..." | tee {log}
-        rgi main \\
-            --input_sequence {input.fasta} \\
-            --output_file results/rgi/{wildcards.sample}_rgi \\
-            --input_type {config[rgi][input_type]} \\
-            --alignment_tool {config[rgi][alignment_tool]} \\
-            --clean \\
+        rgi main \
+            --input_sequence {input.fasta} \
+            --output_file results/rgi/{wildcards.sample}_rgi \
+            --input_type {params.input_type} \
+            --alignment_tool {params.alignment_tool} \
+            --clean \
             --num_threads {threads} >> {log} 2>&1
 
         if [ ! -f {output.rgi} ]; then
@@ -133,7 +138,6 @@ rule run_mobsuite:
             --outdir results/mobsuite/{wildcards.sample}_dir \
             --num_threads {threads} >> {log} 2>&1
 
-        # Pindahkan file laporan ke path output
         cp results/mobsuite/{wildcards.sample}_dir/mob_recon_report.txt {output.report}
         echo "[MOBsuite] Selesai." | tee -a {log}
         """
@@ -150,7 +154,9 @@ rule run_integronfinder:
     input:
         fasta = "data/contigs/{sample}.fasta"
     output:
-        tsv   = "results/integron/{sample}_integrons.tsv"
+        tsv = "results/integron/{sample}_integrons.tsv"
+    params:
+        mode = config["integronfinder"]["mode"]
     conda:
         "envs/integronfinder.yaml"
     log:
@@ -161,13 +167,13 @@ rule run_integronfinder:
         echo "[IntegronFinder] Memproses {wildcards.sample}..." | tee {log}
         mkdir -p results/integron/{wildcards.sample}_dir
 
-        integron_finder \\
-            {input.fasta} \\
-            --outdir results/integron/{wildcards.sample}_dir \\
-            --cpu {threads} \\
-            --{config[integronfinder][mode]} >> {log} 2>&1
+        integron_finder \
+            {input.fasta} \
+            --outdir results/integron/{wildcards.sample}_dir \
+            --cpu {threads} \
+            --{params.mode} >> {log} 2>&1
 
-        find results/integron/{wildcards.sample}_dir -name "*.integrons" \\
+        find results/integron/{wildcards.sample}_dir -name "*.integrons" \
             | xargs cat > {output.tsv} 2>>{log} || touch {output.tsv}
         echo "[IntegronFinder] Selesai." | tee -a {log}
         """
@@ -184,7 +190,7 @@ rule run_isescan:
     input:
         fasta = "data/contigs/{sample}.fasta"
     output:
-        tsv   = "results/isescan/{sample}_is.tsv"
+        tsv = "results/isescan/{sample}_is.tsv"
     conda:
         "envs/isescan.yaml"
     log:
@@ -200,10 +206,8 @@ rule run_isescan:
             --output results/isescan/{wildcards.sample}_dir \
             --nthread {threads} >> {log} 2>&1
 
-        # Ambil file summary IS
         find results/isescan/{wildcards.sample}_dir -name "*.tsv" \
-            | head -1 | xargs cp -t results/isescan/ 2>>{log} \
-            && mv results/isescan/*.tsv {output.tsv} 2>>{log} \
+            | head -1 | xargs -I_F_ cp _F_ {output.tsv} 2>>{log} \
             || touch {output.tsv}
         echo "[ISEScan] Selesai." | tee -a {log}
         """
@@ -214,8 +218,8 @@ rule run_isescan:
 
 rule colocalization:
     """
-    Mengintegrasikan hasil keempat tools di atas untuk setiap gen AMR.
-    Menentukan apakah gen AMR berada di Plasmid, Integron, IS, atau Kromosom.
+    Mengintegrasikan hasil keempat tools untuk setiap gen AMR.
+    Menentukan posisi: Plasmid / Integron / IS / Kromosom.
     Menambahkan metadata Country dan Region dari sample_map.csv.
     """
     input:
@@ -246,8 +250,7 @@ rule colocalization:
 
 rule aggregate_by_population:
     """
-    Merangkum colocalization_summary.csv menjadi tiga matrix agregat
-    yang siap digunakan untuk analisis statistik.
+    Merangkum colocalization_summary.csv menjadi tiga matrix agregat.
     """
     input:
         csv = "results/colocalization_summary.csv"
@@ -272,11 +275,11 @@ rule aggregate_by_population:
 rule run_statistics:
     """
     Analisis statistik komprehensif:
-    - 4A: Alpha & beta diversity (Shannon, PERMANOVA)
-    - 4B: Kruskal-Wallis per AMR class antar populasi
-    - 4C: Chi-square distribusi MGE type
-    - 4D: Fisher's exact AMR × MGE association (FDR-corrected)
-    - 4E: Heatmap, stacked bar, supplementary tables
+    - 4A: Alpha & beta diversity (Shannon, PERMANOVA)   -> Sub-Q1
+    - 4B: Kruskal-Wallis per AMR class antar populasi  -> Sub-Q1
+    - 4C: Chi-square distribusi MGE type               -> Sub-Q2
+    - 4D: Fisher's exact AMR x MGE (FDR-corrected)    -> Sub-Q3
+    - 4E: Heatmap + stacked bar + supplementary tables
     """
     input:
         abund = "results/amr_abundance_matrix.csv",
@@ -284,11 +287,12 @@ rule run_statistics:
         assoc = "results/amr_mge_association_matrix.csv",
         coloc = "results/colocalization_summary.csv"
     output:
-        fig2  = "results/figures/Fig2_MGE_distribution.pdf"
+        fig2 = "results/figures/Fig2_MGE_distribution.pdf"
     conda:
         "envs/r_stats.yaml"
     log:
         "logs/statistics.log"
+    threads: config["resources"]["threads_stats"]
     shell:
         """
         echo "[Statistics] Menjalankan 04_run_stats.R..." | tee {log}
@@ -297,19 +301,19 @@ rule run_statistics:
         """
 
 # ============================================================
-# PHASE 5: Network Comparison (Opsional)
+# PHASE 5: Network Comparison (Opsional - novelty figure)
 # ============================================================
 
 rule network_analysis:
     """
     Analisis jaringan bipartit AMR-MGE per populasi.
     Membandingkan struktur network antar DNK, CHN, IND.
-    Menghasilkan Jaccard similarity dan hub genes.
+    Output: Jaccard similarity + hub genes + network figures.
     """
     input:
         coloc = "results/colocalization_summary.csv"
     output:
-        flag  = "results/figures/Fig3_Network_combined_done.flag"
+        flag = "results/figures/Fig3_Network_combined_done.flag"
     conda:
         "envs/r_stats.yaml"
     log:
