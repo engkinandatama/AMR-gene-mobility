@@ -1,0 +1,108 @@
+# ============================================================
+# config.yaml — Konfigurasi Sentral Pipeline AMR Gene Mobility
+# ============================================================
+# Edit file ini untuk menyesuaikan parameter pipeline.
+# JANGAN edit Snakefile langsung kecuali untuk perubahan logika.
+#
+# Cara pakai:
+#   snakemake phase3 --cores all --use-conda --configfile config.yaml
+# ============================================================
+
+# ------------------------------------------------------------
+# PATHS
+# ------------------------------------------------------------
+paths:
+  contigs_dir:   "data/contigs"          # Folder berisi file .fasta
+  sample_map:    "data/metadata/sample_map.csv"
+  results_dir:   "results"
+  logs_dir:      "logs"
+
+# ------------------------------------------------------------
+# RESOURCES — Sesuaikan dengan kapasitas HPC / Laptop Anda
+# ------------------------------------------------------------
+resources:
+  # Jumlah CPU thread untuk masing-masing tool
+  # Rekomendasi HPC : rgi=8, mob=4, integron=4, isescan=4
+  # Rekomendasi Laptop : semua = 2
+  threads_rgi:         4
+  threads_mobsuite:    4
+  threads_integron:    2
+  threads_isescan:     2
+  threads_stats:       2
+
+  # Maksimal memory (MB) — digunakan untuk MEGAHIT jika nanti dimasukkan
+  max_memory_mb:    16000
+
+# ------------------------------------------------------------
+# RGI (Resistance Gene Identifier)
+# ------------------------------------------------------------
+rgi:
+  # Metode alignment: BLAST (lebih akurat) atau DIAMOND (lebih cepat)
+  alignment_tool: "BLAST"
+
+  # Tipe input: contig (untuk hasil assembly) atau read (untuk raw reads)
+  input_type: "contig"
+
+  # Minimum identity (%) untuk melaporkan hit. Default RGI = 95
+  # Turunkan ke 80 jika ingin tangkap gen AMR yang lebih divergen
+  min_identity: 95
+
+  # Minimum coverage (%) untuk melaporkan hit. Default = 95
+  min_coverage: 95
+
+# ------------------------------------------------------------
+# MOB-suite (Plasmid Detection)
+# ------------------------------------------------------------
+mobsuite:
+  # Minimum contig length (bp) untuk dipertimbangkan MOBsuite
+  min_length: 1000
+
+# ------------------------------------------------------------
+# IntegronFinder
+# ------------------------------------------------------------
+integronfinder:
+  # Mode pencarian:
+  # "local-max"  : Cepat, menemukan integron di contig tanpa perlu seluruh replikon
+  # "linear"     : Untuk kontig linier (metagenom — pilihan ini)
+  # "circ"       : Untuk replikon sirkular
+  mode: "local-max"
+
+  # Apakah laporkan juga CALIN (putative) integron?
+  # true = lebih sensitif; false = hanya integron yang confirmed
+  report_calin: true
+
+# ------------------------------------------------------------
+# ISEScan (Insertion Sequence / Transposon)
+# ------------------------------------------------------------
+isescan:
+  # Tidak banyak parameter yang perlu diubah.
+  # ISEScan otomatis menggunakan semua contig dalam file .fasta.
+  # Hanya atur thread di bagian resources di atas.
+  pass: true
+
+# ------------------------------------------------------------
+# STATISTIK (04_run_stats.R)
+# ------------------------------------------------------------
+stats:
+  # Metode koreksi multiple testing: "BH" (Benjamini-Hochberg/FDR) atau "bonferroni"
+  p_adjust_method: "BH"
+
+  # Alpha threshold untuk signifikansi statistik
+  alpha: 0.05
+
+  # Jumlah permutasi untuk PERMANOVA (adonis2)
+  permanova_permutations: 999
+
+  # Minimum sampel per grup untuk Kruskal-Wallis (skip jika < nilai ini)
+  min_samples_per_group: 2
+
+# ------------------------------------------------------------
+# NETWORK ANALYSIS (05_network_analysis.R)
+# ------------------------------------------------------------
+network:
+  # Minimum frekuensi co-occurrence untuk membuat edge di network
+  # edge X-Y hanya dibuat jika AMR X dan MGE Y co-occur >= nilai ini
+  min_cooccurrence: 1
+
+  # Algoritma layout network: "fr" (Fruchterman-Reingold), "kk", "stress"
+  layout: "fr"

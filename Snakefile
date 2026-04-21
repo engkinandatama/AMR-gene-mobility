@@ -1,4 +1,9 @@
-"""
+# ============================================================
+# Load konfigurasi dari config.yaml
+# ============================================================
+configfile: "config.yaml"
+
+
 Snakefile: AMR Gene Mobility Pipeline
 Versi: 3.0 (V3 - Full Comprehensive Pipeline)
 
@@ -17,10 +22,8 @@ Cara penggunaan:
 import pandas as pd
 import os
 
-# ============================================================
-# KONFIGURASI: Baca sample list dari sample_map.csv
-# ============================================================
-SAMPLE_MAP_FILE = "data/metadata/sample_map.csv"
+SAMPLE_MAP_FILE = config["paths"]["sample_map"]
+
 
 if os.path.exists(SAMPLE_MAP_FILE):
     sample_df = pd.read_csv(SAMPLE_MAP_FILE)
@@ -86,19 +89,18 @@ rule run_rgi:
         "envs/rgi.yaml"
     log:
         "logs/rgi_{sample}.log"
-    threads: 4
+    threads: config["resources"]["threads_rgi"]
     shell:
         """
         echo "[RGI] Memproses {wildcards.sample}..." | tee {log}
-        rgi main \
-            --input_sequence {input.fasta} \
-            --output_file results/rgi/{wildcards.sample}_rgi \
-            --input_type contig \
-            --alignment_tool BLAST \
-            --clean \
+        rgi main \\
+            --input_sequence {input.fasta} \\
+            --output_file results/rgi/{wildcards.sample}_rgi \\
+            --input_type {config[rgi][input_type]} \\
+            --alignment_tool {config[rgi][alignment_tool]} \\
+            --clean \\
             --num_threads {threads} >> {log} 2>&1
 
-        # RGI menambahkan '.txt' otomatis ke nama output
         if [ ! -f {output.rgi} ]; then
             mv results/rgi/{wildcards.sample}_rgi.txt {output.rgi}
         fi
@@ -122,7 +124,7 @@ rule run_mobsuite:
         "envs/mobsuite.yaml"
     log:
         "logs/mobsuite_{sample}.log"
-    threads: 4
+    threads: config["resources"]["threads_mobsuite"]
     shell:
         """
         echo "[MOBsuite] Memproses {wildcards.sample}..." | tee {log}
@@ -153,20 +155,19 @@ rule run_integronfinder:
         "envs/integronfinder.yaml"
     log:
         "logs/integron_{sample}.log"
-    threads: 2
+    threads: config["resources"]["threads_integron"]
     shell:
         """
         echo "[IntegronFinder] Memproses {wildcards.sample}..." | tee {log}
         mkdir -p results/integron/{wildcards.sample}_dir
 
-        integron_finder \
-            {input.fasta} \
-            --outdir results/integron/{wildcards.sample}_dir \
-            --cpu {threads} \
-            --local-max >> {log} 2>&1
+        integron_finder \\
+            {input.fasta} \\
+            --outdir results/integron/{wildcards.sample}_dir \\
+            --cpu {threads} \\
+            --{config[integronfinder][mode]} >> {log} 2>&1
 
-        # Gabungkan semua file .integrons menjadi satu TSV
-        find results/integron/{wildcards.sample}_dir -name "*.integrons" \
+        find results/integron/{wildcards.sample}_dir -name "*.integrons" \\
             | xargs cat > {output.tsv} 2>>{log} || touch {output.tsv}
         echo "[IntegronFinder] Selesai." | tee -a {log}
         """
@@ -188,7 +189,7 @@ rule run_isescan:
         "envs/isescan.yaml"
     log:
         "logs/isescan_{sample}.log"
-    threads: 2
+    threads: config["resources"]["threads_isescan"]
     shell:
         """
         echo "[ISEScan] Memproses {wildcards.sample}..." | tee {log}
