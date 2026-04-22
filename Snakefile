@@ -119,7 +119,7 @@ rule run_rgi:
             --num_threads {threads} >> {log} 2>&1
 
         if [ ! -f {output.rgi} ]; then
-            mv results/rgi/{wildcards.sample}_rgi.txt {output.rgi}
+            touch {output.rgi}
         fi
         echo "[RGI] Selesai. $(grep -c '' {output.rgi}) baris." | tee -a {log}
         """
@@ -148,6 +148,7 @@ rule run_mobsuite:
         mob_recon \
             --infile {input.fasta} \
             --outdir results/mobsuite/{wildcards.sample}_dir \
+            --force \
             --num_threads {threads} >> {log} 2>&1
 
         cp results/mobsuite/{wildcards.sample}_dir/contig_report.txt {output.report}
