@@ -98,6 +98,18 @@ rule run_rgi:
     shell:
         """
         echo "[RGI] Memproses {wildcards.sample}..." | tee {log}
+
+        # Auto-load CARD database dari conda environment
+        CARD_JSON=$(ls ${{CONDA_PREFIX}}/lib/python*/site-packages/app/_data/card.json 2>/dev/null | head -1)
+        if [ -n "$CARD_JSON" ]; then
+            echo "[RGI] Loading CARD database: $CARD_JSON" | tee -a {log}
+            rgi load --card_json "$CARD_JSON" >> {log} 2>&1
+        else
+            echo "[RGI] Downloading CARD database..." | tee -a {log}
+            rgi database --download >> {log} 2>&1
+            rgi load --card_json card.json >> {log} 2>&1
+        fi
+
         rgi main \
             --input_sequence {input.fasta} \
             --output_file results/rgi/{wildcards.sample}_rgi \

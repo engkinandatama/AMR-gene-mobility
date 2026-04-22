@@ -1,7 +1,8 @@
 name: rgi
 channels:
-  - bioconda
   - conda-forge
+  - bioconda
   - defaults
 dependencies:
-  - rgi
+  - python>=3.9
+  - rgi>=6.0
