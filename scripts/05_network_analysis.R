@@ -97,7 +97,7 @@ plot_network <- function(g, title, color_amr = "#1565C0", color_mge = "#B71C1C")
     labs(title = title,
          subtitle = "Edge = co-occurrence; Node size = degree centrality",
          color = "Node Type", size = "Degree") +
-    theme_graph(base_size = 11) +
+    theme_graph(base_family = "sans", base_size = 11) +
     theme(legend.position = "right")
 }
 
