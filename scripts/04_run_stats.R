@@ -20,6 +20,7 @@
 suppressPackageStartupMessages({
   library(dplyr)
   library(tidyr)
+  library(tibble)
   library(ggplot2)
   library(vegan)
   library(dunn.test)
