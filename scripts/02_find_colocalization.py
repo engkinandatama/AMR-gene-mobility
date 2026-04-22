@@ -63,12 +63,13 @@ def load_integronfinder(integron_file):
         df = pd.read_csv(integron_file, sep="\t", comment="#")
         if df.empty:
             return set(), pd.DataFrame()
-        # Kolom khas IntegronFinder: ID_replicon, element_type
+        # Kolom khas IntegronFinder v2: ID_replicon
         if "ID_replicon" not in df.columns:
             return set(), pd.DataFrame()
-        integron_df = df[df["element_type"].str.lower().str.contains("integron", na=False)]
-        integron_contigs = set(integron_df["ID_replicon"].astype(str))
-        summary = integron_df[["ID_replicon"]].drop_duplicates().rename(
+        
+        # Semua baris di file *.integrons adalah bagian dari integron
+        integron_contigs = set(df["ID_replicon"].astype(str))
+        summary = df[["ID_replicon"]].drop_duplicates().rename(
             columns={"ID_replicon": "contig_clean"}
         )
         summary["integron_type"] = "Integron"
@@ -84,6 +85,8 @@ def load_isescan(is_file):
         df = pd.read_csv(is_file, sep="\t")
         if df.empty:
             return set(), pd.DataFrame()
+        # Rename seqID to seqid to handle case-insensitivity
+        df.rename(columns=lambda x: x.lower(), inplace=True)
         # Kolom khas ISEScan: seqid (nama contig), family, cluster
         if "seqid" not in df.columns:
             return set(), pd.DataFrame()
