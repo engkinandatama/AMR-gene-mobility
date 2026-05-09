@@ -1,0 +1,110 @@
+# SLURM Profile Configuration for HPC BRIN
+# ============================================
+# This profile configures Snakemake to submit jobs to SLURM scheduler.
+#
+# Usage:
+#   snakemake all --profile profiles/slurm --use-conda
+#
+# Or with specific resource requests:
+#   snakemake all --profile profiles/slurm --jobs 50 --use-conda
+
+__default__:
+  # Default partition (adjust based on HPC BRIN available partitions)
+  partition: "regular"
+  
+  # Default walltime (will be overridden by rule-specific settings)
+  time: "02:00:00"
+  
+  # Default memory per job
+  mem: "8G"
+  
+  # Default CPUs per task
+  cpus-per-task: 2
+  
+  # Account (fill with your BRIN project account)
+  # account: "your_project_code"
+  
+  # Output directory for SLURM logs
+  output: "logs/slurm/%j.out"
+  error: "logs/slurm/%j.err"
+  
+  # Job name prefix
+  job-name: "amr_pipe_{rule}"
+
+# Phase 1: Download SRA
+download_sra:
+  time: "01:00:00"
+  mem: "8G"
+  cpus-per-task: 2
+
+# Phase 2A: QC with fastp
+qc_fastp:
+  time: "00:30:00"
+  mem: "8G"
+  cpus-per-task: 4
+
+# Phase 2B: Host removal with Bowtie2
+host_removal:
+  time: "02:00:00"
+  mem: "16G"
+  cpus-per-task: 8
+
+# Download hg38 index (run once)
+download_hg38_index:
+  time: "04:00:00"
+  mem: "16G"
+  cpus-per-task: 4
+
+# Phase 2C: Assembly with MEGAHIT
+assembly_megahit:
+  time: "04:00:00"
+  mem: "32G"
+  cpus-per-task: 8
+
+# Phase 3A: AMR detection with RGI
+run_rgi:
+  time: "02:00:00"
+  mem: "16G"
+  cpus-per-task: 8
+
+# Phase 3B: Plasmid detection with MOB-suite
+run_mobsuite:
+  time: "01:00:00"
+  mem: "8G"
+  cpus-per-task: 4
+
+# Phase 3C: Integron detection
+run_integronfinder:
+  time: "01:00:00"
+  mem: "8G"
+  cpus-per-task: 4
+
+# Phase 3D: IS/Transposon detection
+run_isescan:
+  time: "01:00:00"
+  mem: "8G"
+  cpus-per-task: 4
+
+# Phase 3E: Co-localization analysis
+colocalization:
+  time: "00:30:00"
+  mem: "4G"
+  cpus-per-task: 1
+
+# Phase 3F: Aggregation
+aggregate_by_population:
+  time: "00:15:00"
+  mem: "4G"
+  cpus-per-task: 1
+
+# Phase 4: Statistics
+run_statistics:
+  time: "01:00:00"
+  mem: "8G"
+  cpus-per-task: 4
+
+# Phase 5: Network analysis
+network_analysis:
+  time: "01:00:00"
+  mem: "8G"
+  cpus-per-task: 4
