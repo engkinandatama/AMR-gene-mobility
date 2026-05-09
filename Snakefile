@@ -1,25 +1,24 @@
-# ============================================================
-# Load konfigurasi dari config.yaml
-# ============================================================
 configfile: "config.yaml"
 
 """
 Snakefile: AMR Gene Mobility Pipeline
-Versi: 3.1 (V3 - Syntax Fixed)
+Versi: 4.0 (End-to-End)
+
+Pipeline lengkap dari accession ID hingga analisis AMR-MGE.
 
 Cara penggunaan:
-  HPC / Lokal (Phase 3 saja):
+  End-to-end (250 sampel di HPC):
+    snakemake all --cores all --use-conda
+
+  Dari contigs saja (backward compatible):
     snakemake phase3 --cores all --use-conda
 
-  Statistik & Network (Phase 4 & 5):
+  Statistik & Network:
     snakemake phase4 --cores 4 --use-conda
     snakemake phase5 --cores 4 --use-conda
 
-  Semua sekaligus:
-    snakemake all --cores all --use-conda
-
-  Dry-run (validasi pipeline):
-    snakemake phase3 --dry-run --cores 4
+  Dry-run:
+    snakemake all --dry-run --cores 4
 """
 
 import pandas as pd
@@ -31,24 +30,64 @@ SAMPLE_MAP_FILE = config["paths"]["sample_map"]
 if os.path.exists(SAMPLE_MAP_FILE):
     sample_df = pd.read_csv(SAMPLE_MAP_FILE)
     SAMPLES = sample_df["sample_id"].tolist()
+    ACCESSION_MAP = dict(zip(sample_df["sample_id"], sample_df["accession"]))
 else:
-    # Fallback: deteksi otomatis dari file .fasta yang sudah ada
     SAMPLES = [os.path.basename(f).replace(".fasta", "")
                for f in glob_mod.glob("data/contigs/*.fasta")]
+    ACCESSION_MAP = {}
 
 print(f"[Snakemake] Sampel terdeteksi: {SAMPLES}")
+print(f"[Snakemake] Total: {len(SAMPLES)} sampel")
 
-# ============================================================
-# TARGET RULES (Entrypoints)
-# ============================================================
+def get_input_type(wildcards):
+    """
+    Detect input type for sample.
+    Returns: 'contig' if FASTA exists, 'fastq' if FASTQ exists, 'accession' otherwise
+    """
+    fasta_path = f"data/contigs/{wildcards.sample}.fasta"
+    fastq_path = f"data/raw_reads/{wildcards.sample}_1.fastq.gz"
+    
+    if os.path.exists(fasta_path):
+        return "contig"
+    elif os.path.exists(fastq_path):
+        return "fastq"
+    else:
+        return "accession"
+
+def get_assembly_input(wildcards):
+    """
+    Determine input for assembly rule based on available files.
+    """
+    input_type = get_input_type(wildcards)
+    
+    if input_type == "contig":
+        return f"data/contigs/{wildcards.sample}.fasta"
+    else:
+        return {
+            "r1": f"data/nonhost_reads/{wildcards.sample}_1.fastq.gz",
+            "r2": f"data/nonhost_reads/{wildcards.sample}_2.fastq.gz"
+        }
 
 rule all:
     """Target utama: jalankan seluruh pipeline end-to-end."""
     input:
-        expand("results/rgi/{sample}_rgi.txt",            sample=SAMPLES),
-        expand("results/mobsuite/{sample}_plasmid.txt",   sample=SAMPLES),
+        expand("results/rgi/{sample}_rgi.txt", sample=SAMPLES),
+        expand("results/mobsuite/{sample}_plasmid.txt", sample=SAMPLES),
         expand("results/integron/{sample}_integrons.tsv", sample=SAMPLES),
-        expand("results/isescan/{sample}_is.tsv",         sample=SAMPLES),
+        expand("results/isescan/{sample}_is.tsv", sample=SAMPLES),
+        "results/colocalization_summary.csv",
+        "results/amr_abundance_matrix.csv",
+        "results/figures/Fig2_MGE_distribution.pdf",
+        "results/figures/Fig3_Network_combined_done.flag"
+
+rule all_full:
+    """Target untuk full pipeline dari accession (Phase 1-5)."""
+    input:
+        expand("data/contigs/{sample}.fasta", sample=SAMPLES),
+        expand("results/rgi/{sample}_rgi.txt", sample=SAMPLES),
+        expand("results/mobsuite/{sample}_plasmid.txt", sample=SAMPLES),
+        expand("results/integron/{sample}_integrons.tsv", sample=SAMPLES),
+        expand("results/isescan/{sample}_is.tsv", sample=SAMPLES),
         "results/colocalization_summary.csv",
         "results/amr_abundance_matrix.csv",
         "results/figures/Fig2_MGE_distribution.pdf",
@@ -57,26 +96,242 @@ rule all:
 rule phase3:
     """Jalankan hanya deteksi AMR + MGE + integrasi data."""
     input:
-        expand("results/rgi/{sample}_rgi.txt",            sample=SAMPLES),
-        expand("results/mobsuite/{sample}_plasmid.txt",   sample=SAMPLES),
+        expand("results/rgi/{sample}_rgi.txt", sample=SAMPLES),
+        expand("results/mobsuite/{sample}_plasmid.txt", sample=SAMPLES),
         expand("results/integron/{sample}_integrons.tsv", sample=SAMPLES),
-        expand("results/isescan/{sample}_is.tsv",         sample=SAMPLES),
+        expand("results/isescan/{sample}_is.tsv", sample=SAMPLES),
         "results/colocalization_summary.csv",
         "results/amr_abundance_matrix.csv"
 
 rule phase4:
-    """Jalankan statistik dan visualisasi (setelah Phase 3 selesai)."""
+    """Jalankan statistik dan visualisasi."""
     input:
         "results/figures/Fig2_MGE_distribution.pdf"
 
 rule phase5:
-    """Jalankan network comparison (opsional)."""
+    """Jalankan network comparison."""
     input:
         "results/figures/Fig3_Network_combined_done.flag"
 
-# ============================================================
+# PHASE 1: Download SRA Data
+
+rule download_sra:
+    """
+    Download raw reads dari NCBI SRA.
+    Menggunakan sra-tools dengan fallback mechanism.
+    """
+    input:
+        sample_map = SAMPLE_MAP_FILE
+    output:
+        r1 = "data/raw_reads/{sample}_1.fastq.gz",
+        r2 = "data/raw_reads/{sample}_2.fastq.gz"
+    params:
+        accession = lambda wildcards: ACCESSION_MAP.get(wildcards.sample, wildcards.sample)
+    conda:
+        "envs/sra-tools.yaml"
+    log:
+        "logs/download_{sample}.log"
+    threads: 2
+    resources:
+        mem_mb = 4000,
+        disk_mb = 15000
+    shell:
+        """
+        echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..." | tee {log}
+        
+        mkdir -p data/raw_reads
+        
+        prefetch {params.accession} --max-size 50G 2>>{log} || \
+            echo "[WARN] prefetch gagal, mencoba fasterq-dump langsung..." >>{log}
+        
+        if [ -d "{params.accession}" ]; then
+            fasterq-dump --split-files --threads {threads} {params.accession} 2>>{log}
+            pigz -p {threads} {params.accession}_1.fastq 2>>{log}
+            pigz -p {threads} {params.accession}_2.fastq 2>>{log}
+            mv {params.accession}_1.fastq.gz {output.r1}
+            mv {params.accession}_2.fastq.gz {output.r2}
+        else
+            fasterq-dump --split-files --threads {threads} {params.accession} \
+                --outdir data/raw_reads 2>>{log}
+            pigz -p {threads} data/raw_reads/{params.accession}_1.fastq 2>>{log}
+            pigz -p {threads} data/raw_reads/{params.accession}_2.fastq 2>>{log}
+            mv data/raw_reads/{params.accession}_1.fastq.gz {output.r1}
+            mv data/raw_reads/{params.accession}_2.fastq.gz {output.r2}
+        fi
+        
+        echo "[Download] Selesai. Ukuran file:" >>{log}
+        ls -lh {output.r1} {output.r2} >>{log}
+        """
+
+# PHASE 2A: Quality Control dengan fastp
+
+rule qc_fastp:
+    """
+    Quality control dan adapter trimming menggunakan fastp.
+    Menghasilkan cleaned reads dan QC report.
+    """
+    input:
+        r1 = "data/raw_reads/{sample}_1.fastq.gz",
+        r2 = "data/raw_reads/{sample}_2.fastq.gz"
+    output:
+        qc1 = "data/qc_reads/{sample}_1.fastq.gz",
+        qc2 = "data/qc_reads/{sample}_2.fastq.gz",
+        html = "logs/qc/fastp_{sample}.html",
+        json = "logs/qc/fastp_{sample}.json"
+    params:
+        qualified_quality = config.get("fastp", {}).get("qualified_quality", 20),
+        length_required = config.get("fastp", {}).get("length_required", 50)
+    conda:
+        "envs/fastp.yaml"
+    log:
+        "logs/fastp_{sample}.log"
+    threads: 4
+    resources:
+        mem_mb = 8000
+    shell:
+        """
+        echo "[Fastp] Quality control untuk {wildcards.sample}..." | tee {log}
+        
+        mkdir -p data/qc_reads logs/qc
+        
+        fastp \
+            -i {input.r1} -I {input.r2} \
+            -o {output.qc1} -O {output.qc2} \
+            --thread {threads} \
+            --html {output.html} \
+            --json {output.json} \
+            --qualified_quality_phred {params.qualified_quality} \
+            --length_required {params.length_required} \
+            --detect_adapter_for_pe \
+            --correction \
+            2>>{log}
+        
+        echo "[Fastp] Selesai. QC report: {output.html}" >>{log}
+        """
+
+# PHASE 2B: Host Removal dengan Bowtie2
+
+rule download_hg38_index:
+    """
+    Download dan index hg38 reference genome untuk host removal.
+    Hanya dijalankan sekali, output diproteksi.
+    """
+    output:
+        index = protected("databases/hg38/hg38.1.bt2")
+    params:
+        url = "ftp://ftp.ncbi.nlm.nih.gov/genomes/all/GCA/000/001/405/GCA_000001405.15_GRCh38/seqs_for_alignment_pipelines.ucsc_ids/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz"
+    conda:
+        "envs/bowtie2.yaml"
+    log:
+        "logs/download_hg38.log"
+    threads: 4
+    resources:
+        mem_mb = 16000
+    shell:
+        """
+        echo "[HG38] Downloading human reference genome..." | tee {log}
+        
+        mkdir -p databases/hg38
+        cd databases/hg38
+        
+        wget -O hg38.fa.gz {params.url} 2>>{log} || \
+            curl -L -o hg38.fa.gz {params.url} 2>>{log}
+        
+        gunzip hg38.fa.gz 2>>{log}
+        
+        bowtie2-build --threads {threads} hg38.fa hg38 2>>{log}
+        
+        echo "[HG38] Index build complete." >>{log}
+        """
+
+rule host_removal:
+    """
+    Remove human reads menggunakan Bowtie2 alignment ke hg38.
+    Output: non-host reads yang siap untuk assembly.
+    """
+    input:
+        r1 = "data/qc_reads/{sample}_1.fastq.gz",
+        r2 = "data/qc_reads/{sample}_2.fastq.gz",
+        index = "databases/hg38/hg38.1.bt2"
+    output:
+        nh1 = "data/nonhost_reads/{sample}_1.fastq.gz",
+        nh2 = "data/nonhost_reads/{sample}_2.fastq.gz",
+        stats = "logs/host_removal/{sample}_bowtie2.stats"
+    params:
+        index_base = "databases/hg38/hg38"
+    conda:
+        "envs/bowtie2.yaml"
+    log:
+        "logs/host_removal_{sample}.log"
+    threads: 8
+    resources:
+        mem_mb = 16000
+    shell:
+        """
+        echo "[Host Removal] {wildcards.sample} - removing human reads..." | tee {log}
+        
+        mkdir -p data/nonhost_reads logs/host_removal
+        
+        bowtie2 \
+            -x {params.index_base} \
+            -1 {input.r1} -2 {input.r2} \
+            --un-conc-gz data/nonhost_reads/{wildcards.sample}_%.fastq.gz \
+            --very-sensitive \
+            --no-unal \
+            -p {threads} \
+            2> {output.stats} 1>>{log}
+        
+        echo "[Host Removal] Selesai." >>{log}
+        
+        grep "overall alignment rate" {output.stats} >>{log} || true
+        """
+
+# PHASE 2C: De Novo Assembly dengan MEGAHIT
+
+rule assembly_megahit:
+    """
+    Metagenome assembly menggunakan MEGAHIT.
+    Menghasilkan contigs dari non-host reads.
+    """
+    input:
+        r1 = "data/nonhost_reads/{sample}_1.fastq.gz",
+        r2 = "data/nonhost_reads/{sample}_2.fastq.gz"
+    output:
+        contigs = "data/contigs/{sample}.fasta",
+        log_file = "logs/assembly/{sample}_megahit.log"
+    params:
+        preset = config.get("megahit", {}).get("preset", "meta-large"),
+        min_contig = config.get("megahit", {}).get("min_contig_len", 1000),
+        outdir = "data/assembly/{sample}"
+    conda:
+        "envs/megahit.yaml"
+    log:
+        "logs/assembly_{sample}.log"
+    threads: 8
+    resources:
+        mem_mb = 32000
+    shell:
+        """
+        echo "[MEGAHIT] Assembly untuk {wildcards.sample}..." | tee {log}
+        
+        mkdir -p data/contigs logs/assembly
+        
+        megahit \
+            -1 {input.r1} -2 {input.r2} \
+            -o {params.outdir} \
+            --presets {params.preset} \
+            --min-contig-len {params.min_contig} \
+            --num-cpu-threads {threads} \
+            --memory 0.9 \
+            2>&1 | tee {output.log_file}
+        
+        mv {params.outdir}/final.contigs.fa {output.contigs}
+        
+        echo "[MEGAHIT] Selesai. Total contigs:" >>{log}
+        grep -c "^>" {output.contigs} >>{log} || echo "0" >>{log}
+        """
+
 # PHASE 3A: Deteksi AMR dengan RGI + CARD Database
-# ============================================================
 
 rule run_rgi:
     """
@@ -88,7 +343,7 @@ rule run_rgi:
     output:
         rgi = "results/rgi/{sample}_rgi.txt"
     params:
-        input_type     = config["rgi"]["input_type"],
+        input_type = config["rgi"]["input_type"],
         alignment_tool = config["rgi"]["alignment_tool"]
     conda:
         "envs/rgi.yaml"
@@ -98,8 +353,7 @@ rule run_rgi:
     shell:
         """
         echo "[RGI] Memproses {wildcards.sample}..." | tee {log}
-
-        # Auto-load CARD database dari conda environment
+        
         CARD_JSON=$(ls ${{CONDA_PREFIX}}/lib/python*/site-packages/app/_data/card.json 2>/dev/null | head -1)
         if [ -n "$CARD_JSON" ]; then
             echo "[RGI] Loading CARD database: $CARD_JSON" | tee -a {log}
@@ -109,7 +363,7 @@ rule run_rgi:
             rgi database --download >> {log} 2>&1
             rgi load --card_json card.json >> {log} 2>&1
         fi
-
+        
         rgi main \
             --input_sequence {input.fasta} \
             --output_file results/rgi/{wildcards.sample}_rgi \
@@ -117,16 +371,14 @@ rule run_rgi:
             --alignment_tool {params.alignment_tool} \
             --clean \
             --num_threads {threads} >> {log} 2>&1
-
+        
         if [ ! -f {output.rgi} ]; then
             touch {output.rgi}
         fi
         echo "[RGI] Selesai. $(grep -c '' {output.rgi}) baris." | tee -a {log}
         """
 
-# ============================================================
 # PHASE 3B: Deteksi Plasmid dengan MOB-suite
-# ============================================================
 
 rule run_mobsuite:
     """
@@ -150,14 +402,12 @@ rule run_mobsuite:
             --outdir results/mobsuite/{wildcards.sample}_dir \
             --force \
             --num_threads {threads} >> {log} 2>&1
-
+        
         cp results/mobsuite/{wildcards.sample}_dir/contig_report.txt {output.report}
         echo "[MOBsuite] Selesai." | tee -a {log}
         """
 
-# ============================================================
 # PHASE 3C: Deteksi Integron dengan IntegronFinder
-# ============================================================
 
 rule run_integronfinder:
     """
@@ -179,21 +429,19 @@ rule run_integronfinder:
         """
         echo "[IntegronFinder] Memproses {wildcards.sample}..." | tee {log}
         mkdir -p results/integron/{wildcards.sample}_dir
-
+        
         integron_finder \
             {input.fasta} \
             --outdir results/integron/{wildcards.sample}_dir \
             --cpu {threads} \
             --{params.mode} >> {log} 2>&1
-
+        
         find results/integron/{wildcards.sample}_dir -name "*.integrons" \
             | xargs cat > {output.tsv} 2>>{log} || touch {output.tsv}
         echo "[IntegronFinder] Selesai." | tee -a {log}
         """
 
-# ============================================================
 # PHASE 3D: Deteksi IS / Transposon dengan ISEScan
-# ============================================================
 
 rule run_isescan:
     """
@@ -213,21 +461,19 @@ rule run_isescan:
         """
         echo "[ISEScan] Memproses {wildcards.sample}..." | tee {log}
         mkdir -p results/isescan/{wildcards.sample}_dir
-
+        
         isescan.py \
             --seqfile {input.fasta} \
             --output results/isescan/{wildcards.sample}_dir \
             --nthread {threads} >> {log} 2>&1
-
+        
         find results/isescan/{wildcards.sample}_dir -name "*.tsv" \
             | head -1 | xargs -I_F_ cp _F_ {output.tsv} 2>>{log} \
             || touch {output.tsv}
         echo "[ISEScan] Selesai." | tee -a {log}
         """
 
-# ============================================================
 # PHASE 3E: HGT Linkage — Co-localization Integration
-# ============================================================
 
 rule colocalization:
     """
@@ -236,11 +482,11 @@ rule colocalization:
     Menambahkan metadata Country dan Region dari sample_map.csv.
     """
     input:
-        rgi      = expand("results/rgi/{sample}_rgi.txt",            sample=SAMPLES),
-        mob      = expand("results/mobsuite/{sample}_plasmid.txt",   sample=SAMPLES),
+        rgi = expand("results/rgi/{sample}_rgi.txt", sample=SAMPLES),
+        mob = expand("results/mobsuite/{sample}_plasmid.txt", sample=SAMPLES),
         integron = expand("results/integron/{sample}_integrons.tsv", sample=SAMPLES),
-        isescan  = expand("results/isescan/{sample}_is.tsv",         sample=SAMPLES),
-        map      = SAMPLE_MAP_FILE
+        isescan = expand("results/isescan/{sample}_is.tsv", sample=SAMPLES),
+        map = SAMPLE_MAP_FILE
     output:
         csv = "results/colocalization_summary.csv"
     conda:
@@ -257,9 +503,7 @@ rule colocalization:
         echo "[Co-localization] Selesai. Output: {output.csv}" | tee -a {log}
         """
 
-# ============================================================
 # PHASE 3F: Agregasi per Populasi
-# ============================================================
 
 rule aggregate_by_population:
     """
@@ -269,7 +513,7 @@ rule aggregate_by_population:
         csv = "results/colocalization_summary.csv"
     output:
         abund = "results/amr_abundance_matrix.csv",
-        mge   = "results/mge_distribution_matrix.csv",
+        mge = "results/mge_distribution_matrix.csv",
         assoc = "results/amr_mge_association_matrix.csv"
     conda:
         "envs/python.yaml"
@@ -281,22 +525,20 @@ rule aggregate_by_population:
         python scripts/03_aggregate_by_population.py 2>&1 | tee -a {log}
         """
 
-# ============================================================
 # PHASE 4: Statistik & Visualisasi
-# ============================================================
 
 rule run_statistics:
     """
     Analisis statistik komprehensif:
-    - 4A: Alpha & beta diversity (Shannon, PERMANOVA)   -> Sub-Q1
-    - 4B: Kruskal-Wallis per AMR class antar populasi  -> Sub-Q1
-    - 4C: Chi-square distribusi MGE type               -> Sub-Q2
-    - 4D: Fisher's exact AMR x MGE (FDR-corrected)    -> Sub-Q3
+    - 4A: Alpha & beta diversity (Shannon, PERMANOVA)
+    - 4B: Kruskal-Wallis per AMR class antar populasi
+    - 4C: Chi-square distribusi MGE type
+    - 4D: Fisher's exact AMR x MGE (FDR-corrected)
     - 4E: Heatmap + stacked bar + supplementary tables
     """
     input:
         abund = "results/amr_abundance_matrix.csv",
-        mge   = "results/mge_distribution_matrix.csv",
+        mge = "results/mge_distribution_matrix.csv",
         assoc = "results/amr_mge_association_matrix.csv",
         coloc = "results/colocalization_summary.csv"
     output:
@@ -313,14 +555,12 @@ rule run_statistics:
         echo "[Statistics] Selesai." | tee -a {log}
         """
 
-# ============================================================
-# PHASE 5: Network Comparison (Opsional - novelty figure)
-# ============================================================
+# PHASE 5: Network Comparison
 
 rule network_analysis:
     """
     Analisis jaringan bipartit AMR-MGE per populasi.
-    Membandingkan struktur network antar DNK, CHN, IND.
+    Membandingkan struktur network antar populasi.
     Output: Jaccard similarity + hub genes + network figures.
     """
     input:
@@ -337,4 +577,27 @@ rule network_analysis:
         Rscript scripts/05_network_analysis.R 2>&1 | tee -a {log}
         touch {output.flag}
         echo "[Network] Selesai." | tee -a {log}
+        """
+
+# Cleanup temporary files (optional)
+
+rule cleanup_intermediates:
+    """
+    Hapus file intermediate (raw reads, QC reads, non-host reads)
+    untuk menghemat storage setelah assembly sukses.
+    """
+    input:
+        contigs = "data/contigs/{sample}.fasta"
+    output:
+        touch("logs/cleanup_{sample}.done")
+    shell:
+        """
+        echo "[Cleanup] Removing intermediate files for {wildcards.sample}..."
+        
+        rm -f data/raw_reads/{wildcards.sample}_*.fastq.gz 2>/dev/null || true
+        rm -f data/qc_reads/{wildcards.sample}_*.fastq.gz 2>/dev/null || true
+        rm -f data/nonhost_reads/{wildcards.sample}_*.fastq.gz 2>/dev/null || true
+        rm -rf data/assembly/{wildcards.sample} 2>/dev/null || true
+        
+        echo "[Cleanup] Done."
         """
