@@ -9,6 +9,8 @@ results/
 logs/
 plan/
 output/
+.dev/ 
+data/
 
 # Environments
 amr-env/
