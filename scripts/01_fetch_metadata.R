@@ -126,7 +126,7 @@ set.seed(random_seed)
 
 final_samples <- target_data %>%
   group_by(country) %>%
-  slice_sample(n = min(n_per_country, n())) %>%
+  slice_sample(n = n_per_country) %>%
   ungroup()
 
 cat("\n--- SAMPEL FINAL TERPILIH ---\n")
