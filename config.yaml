@@ -220,3 +220,16 @@ host_removal:
 
   # Mode alignment: "very-sensitive" untuk sensitivity tinggi
   alignment_mode: "very-sensitive"
+
+# ------------------------------------------------------------
+# RESOURCE ALLOCATION (Threads/CPU)
+# ------------------------------------------------------------
+resources:
+  threads_sra: 2
+  threads_fastp: 4
+  threads_bowtie: 8
+  threads_megahit: 16
+  threads_rgi: 8
+  threads_mobsuite: 8
+  threads_integron: 4
+  threads_isescan: 8

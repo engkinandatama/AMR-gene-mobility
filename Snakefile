@@ -137,7 +137,7 @@ rule download_sra:
         "logs/download_{sample}.log"
     benchmark:
         "benchmarks/download_{sample}.tsv"
-    threads: 2
+    threads: config["resources"]["threads_sra"]
     resources:
         mem_mb   = 4000,
         disk_mb  = 15000,
@@ -208,7 +208,7 @@ rule qc_fastp:
         "logs/fastp_{sample}.log"
     benchmark:
         "benchmarks/fastp_{sample}.tsv"
-    threads: 4
+    threads: config["resources"]["threads_fastp"]
     resources:
         mem_mb   = 8000,
         partition = "short",
@@ -294,7 +294,7 @@ rule host_removal:
         "logs/host_removal_{sample}.log"
     benchmark:
         "benchmarks/host_removal_{sample}.tsv"
-    threads: 8
+    threads: config["resources"]["threads_bowtie"]
     resources:
         mem_mb   = 16000,
         partition = "short",
@@ -341,7 +341,7 @@ rule assembly_megahit:
         "logs/assembly_{sample}.log"
     benchmark:
         "benchmarks/assembly_{sample}.tsv"
-    threads: 8
+    threads: config["resources"]["threads_megahit"]
     resources:
         mem_mb   = 32000,
         partition = "medium-small",
