@@ -9,9 +9,7 @@ RUN_ID = config.get("run_id", "pilot_run")
 OUT = f"results/{RUN_ID}"
 
 # Otomatis buat folder utama agar SLURM tidak ngambek
-# logs/slurm di root = untuk system log dari SLURM (sbatch --output/--error)
-# {OUT}/logs/slurm  = untuk per-rule log dari pipeline
-os.makedirs("logs/slurm", exist_ok=True)
+# Kita satukan semua log ke dalam folder hasil agar root tetap bersih
 os.makedirs(f"{OUT}/logs/slurm", exist_ok=True)
 os.makedirs(f"{OUT}/benchmarks", exist_ok=True)
 os.makedirs(f"{OUT}/tmp", exist_ok=True)

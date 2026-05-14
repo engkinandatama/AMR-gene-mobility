@@ -31,7 +31,8 @@
 # =============================================================================
 
 # Perintah submit ke SLURM — membaca resources dari rule Snakefile
-cluster: "sbatch --partition={resources.partition} --mem={resources.mem_mb}M --cpus-per-task={threads} --time={resources.runtime} --output=logs/slurm/{rule}_%j.out --error=logs/slurm/{rule}_%j.err --job-name=amr_{rule}"
+# Kita arahkan log system SLURM ke dalam folder hasil (pilot_run)
+cluster: "sbatch --partition={resources.partition} --mem={resources.mem_mb}M --cpus-per-task={threads} --time={resources.runtime} --output=results/pilot_run/logs/slurm/{rule}_%j.out --error=results/pilot_run/logs/slurm/{rule}_%j.err --job-name=amr_{rule}"
 
 # Max job concurrent — sesuaikan dengan MaxJobs akun kamu
 # Akun default BRIN: MaxJobs=3 | Setelah upgrade admin: ganti ke 50
