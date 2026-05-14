@@ -147,28 +147,41 @@ rule download_sra:
         """
         echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..." | tee {log}
         
-        mkdir -p data/raw_reads
+        mkdir -p data/raw_reads tmp_download_{wildcards.sample}
         
-        prefetch {params.accession} --max-size 50G 2>>{log} || \
-            echo "[WARN] prefetch gagal, mencoba fasterq-dump langsung..." >>{log}
+        # Split accession by semicolon
+        IFS=';' read -ra ADDR <<< "{params.accession}"
         
-        if [ -d "{params.accession}" ]; then
-            fasterq-dump --split-files --threads {threads} {params.accession} 2>>{log}
-            pigz -p {threads} {params.accession}_1.fastq 2>>{log}
-            pigz -p {threads} {params.accession}_2.fastq 2>>{log}
-            mv {params.accession}_1.fastq.gz {output.r1}
-            mv {params.accession}_2.fastq.gz {output.r2}
-        else
-            fasterq-dump --split-files --threads {threads} {params.accession} \
-                --outdir data/raw_reads 2>>{log}
-            pigz -p {threads} data/raw_reads/{params.accession}_1.fastq 2>>{log}
-            pigz -p {threads} data/raw_reads/{params.accession}_2.fastq 2>>{log}
-            mv data/raw_reads/{params.accession}_1.fastq.gz {output.r1}
-            mv data/raw_reads/{params.accession}_2.fastq.gz {output.r2}
-        fi
+        for acc in "${{ADDR[@]}}"; do
+            echo "[Download] Memproses run: $acc" >> {log}
+            
+            # Prefetch
+            prefetch "$acc" --max-size 50G 2>>{log} || \
+                echo "[WARN] prefetch $acc gagal, mencoba fasterq-dump langsung..." >>{log}
+            
+            # Download FASTQ
+            fasterq-dump --split-files --threads {threads} "$acc" \
+                --outdir tmp_download_{wildcards.sample} 2>>{log}
+            
+            # Gabungkan (append) ke file temporer
+            cat tmp_download_{wildcards.sample}/"$acc"_1.fastq >> tmp_combined_{wildcards.sample}_1.fastq
+            cat tmp_download_{wildcards.sample}/"$acc"_2.fastq >> tmp_combined_{wildcards.sample}_2.fastq
+            
+            # Bersihkan temporary per-run
+            rm -rf "$acc" tmp_download_{wildcards.sample}/"$acc"*
+        done
         
-        echo "[Download] Selesai. Ukuran file:" >>{log}
-        ls -lh {output.r1} {output.r2} >>{log}
+        # Kompresi file gabungan final
+        echo "[Download] Kompresi file gabungan..." >> {log}
+        pigz -p {threads} -c tmp_combined_{wildcards.sample}_1.fastq > {output.r1}
+        pigz -p {threads} -c tmp_combined_{wildcards.sample}_2.fastq > {output.r2}
+        
+        # Bersihkan temporary gabungan
+        rm tmp_combined_{wildcards.sample}_1.fastq tmp_combined_{wildcards.sample}_2.fastq
+        rm -rf tmp_download_{wildcards.sample}
+        
+        echo "[Download] Selesai. Ukuran file gabungan:" >> {log}
+        ls -lh {output.r1} {output.r2} >> {log}
         """
 
 # PHASE 2A: Quality Control dengan fastp
