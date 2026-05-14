@@ -145,7 +145,7 @@ rule download_sra:
         mem_mb   = 4000,
         disk_mb  = 15000,
         partition = "short",
-        runtime  = "01:00:00"
+        runtime  = 60
     shell:
         """
         echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..." | tee {log}
@@ -215,7 +215,7 @@ rule qc_fastp:
     resources:
         mem_mb   = 8000,
         partition = "short",
-        runtime  = "00:30:00"
+        runtime  = 30
     shell:
         """
         echo "[Fastp] Quality control untuk {wildcards.sample}..." | tee {log}
@@ -348,7 +348,7 @@ rule assembly_megahit:
     resources:
         mem_mb   = 32000,
         partition = "medium-small",
-        runtime  = "06:00:00"
+        runtime  = 360
     shell:
         """
         echo "[MEGAHIT] Assembly untuk {wildcards.sample}..." | tee {log}
@@ -397,7 +397,7 @@ rule run_rgi:
     resources:
         mem_mb   = 16000,
         partition = "short",
-        runtime  = "03:00:00"
+        runtime  = 180
     shell:
         """
         echo "[RGI] Memproses {wildcards.sample}..." | tee {log}
@@ -447,7 +447,7 @@ rule run_mobsuite:
     resources:
         mem_mb   = 8000,
         partition = "short",
-        runtime  = "01:00:00"
+        runtime  = 60
     shell:
         """
         echo "[MOBsuite] Memproses {wildcards.sample}..." | tee {log}
@@ -484,7 +484,7 @@ rule run_integronfinder:
     resources:
         mem_mb   = 8000,
         partition = "short",
-        runtime  = "01:00:00"
+        runtime  = 60
     shell:
         """
         echo "[IntegronFinder] Memproses {wildcards.sample}..." | tee {log}
@@ -522,7 +522,7 @@ rule run_isescan:
     resources:
         mem_mb   = 8000,
         partition = "short",
-        runtime  = "01:00:00"
+        runtime  = 60
     shell:
         """
         echo "[ISEScan] Memproses {wildcards.sample}..." | tee {log}
@@ -564,7 +564,7 @@ rule colocalization:
     resources:
         mem_mb   = 4000,
         partition = "short",
-        runtime  = "00:30:00"
+        runtime  = 30
     shell:
         """
         echo "[Co-localization] Mengintegrasikan data MGE dan AMR..." | tee {log}
@@ -596,7 +596,7 @@ rule aggregate_by_population:
     resources:
         mem_mb   = 4000,
         partition = "short",
-        runtime  = "00:30:00"
+        runtime  = 30
     shell:
         """
         echo "[Aggregate] Merangkum data per populasi..." | tee {log}
@@ -631,7 +631,7 @@ rule run_statistics:
     resources:
         mem_mb   = 8000,
         partition = "short",
-        runtime  = "01:00:00"
+        runtime  = 60
     shell:
         """
         echo "[Statistics] Menjalankan 04_run_stats.R..." | tee {log}
@@ -660,7 +660,7 @@ rule network_analysis:
     resources:
         mem_mb   = 8000,
         partition = "short",
-        runtime  = "01:00:00"
+        runtime  = 60
     shell:
         """
         echo "[Network] Menjalankan 05_network_analysis.R..." | tee {log}
