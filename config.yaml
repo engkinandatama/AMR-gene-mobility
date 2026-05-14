@@ -233,3 +233,4 @@ resources:
   threads_mobsuite: 8
   threads_integron: 4
   threads_isescan: 8
+  threads_stats: 2
