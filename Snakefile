@@ -15,7 +15,7 @@ os.makedirs(f"{OUT}/benchmarks", exist_ok=True)
 os.makedirs(f"{OUT}/tmp", exist_ok=True)
 
 # Rule yang harus jalan di Login Node
-localrules: all, download_sra, cleanup_intermediates, download_hg38_index
+localrules: all, download_sra, cleanup_intermediates, download_hg38_fasta
 
 # --- METADATA LOADING ---
 # Support dua cara: --config sample_map=... atau dari config.yaml
@@ -49,21 +49,21 @@ rule download_sra:
         
         IFS=';' read -ra ADDR <<< "{params.accession}"
         for acc in "${{ADDR[@]}}"; do
-            echo "[Download] Memproses run: $acc" >> "{log}"
-            prefetch "$acc" --max-size 50G >>"{log}" 2>&1 || echo "[WARN] prefetch $acc gagal, mencoba fasterq-dump langsung..." >>"{log}"
-            fasterq-dump --split-files --threads {threads} "$acc" --outdir "$tmp_run" >>"{log}" 2>&1
+            echo "[Download] Memproses run: ${{acc}}" >> "{log}"
+            prefetch "${{acc}}" --max-size 50G >>"{log}" 2>&1 || echo "[WARN] prefetch ${{acc}} gagal, mencoba fasterq-dump langsung..." >>"{log}"
+            fasterq-dump --split-files --threads {threads} "${{acc}}" --outdir "$tmp_run" >>"{log}" 2>&1
             
             # Deteksi: Apakah Paired-End (_1 dan _2) atau Single-End (.fastq saja)?
-            if [ -f "$tmp_run/${acc}_1.fastq" ]; then
-                cat "$tmp_run/${acc}_1.fastq" >> "$tmp_run/combined_1.fastq"
-                cat "$tmp_run/${acc}_2.fastq" >> "$tmp_run/combined_2.fastq"
-            elif [ -f "$tmp_run/${acc}.fastq" ]; then
-                echo "[INFO] Sampel $acc terdeteksi Single-End." >> "{log}"
-                cat "$tmp_run/${acc}.fastq" >> "$tmp_run/combined_1.fastq"
+            if [ -f "$tmp_run/${{acc}}_1.fastq" ]; then
+                cat "$tmp_run/${{acc}}_1.fastq" >> "$tmp_run/combined_1.fastq"
+                cat "$tmp_run/${{acc}}_2.fastq" >> "$tmp_run/combined_2.fastq"
+            elif [ -f "$tmp_run/${{acc}}.fastq" ]; then
+                echo "[INFO] Sampel ${{acc}} terdeteksi Single-End." >> "{log}"
+                cat "$tmp_run/${{acc}}.fastq" >> "$tmp_run/combined_1.fastq"
                 touch "$tmp_run/combined_2.fastq" # Buat file kosong untuk R2 agar Snakemake tidak error
             fi
             
-            rm -rf "$acc" "$tmp_run/${acc}"*
+            rm -rf "${{acc}}" "$tmp_run/${{acc}}"*
         done
         
         # Kompresi ke folder tujuan
