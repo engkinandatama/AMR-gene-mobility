@@ -214,7 +214,8 @@ country_map <- data.frame(
 sample_map <- final_samples %>%
   select(country, accession = NCBI_accession) %>%
   left_join(country_map, by = "country") %>%
-  mutate(sample_id = paste0(country, "_", accession)) %>%
+  # Ganti ";" jadi "_" di sample_id supaya aman di sistem file Linux
+  mutate(sample_id = paste0(country, "_", gsub(";", "_", accession))) %>%
   select(sample_id, country, country_name, region, accession)
 
 write.csv(sample_map,
