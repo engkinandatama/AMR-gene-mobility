@@ -69,7 +69,10 @@ def get_assembly_input(wildcards):
         }
 
 rule all:
-    """Target utama: jalankan seluruh pipeline end-to-end."""
+    """Target utama: jalankan seluruh pipeline end-to-end.
+    Termasuk cleanup intermediate FASTQ setelah assembly berhasil
+    untuk menghemat kuota storage (500 GB scratch Mahameru).
+    """
     input:
         expand("results/rgi/{sample}_rgi.txt", sample=SAMPLES),
         expand("results/mobsuite/{sample}_plasmid.txt", sample=SAMPLES),
@@ -78,7 +81,8 @@ rule all:
         "results/colocalization_summary.csv",
         "results/amr_abundance_matrix.csv",
         "results/figures/Fig2_MGE_distribution.pdf",
-        "results/figures/Fig3_Network_combined_done.flag"
+        "results/figures/Fig3_Network_combined_done.flag",
+        expand("logs/cleanup_{sample}.done", sample=SAMPLES)
 
 rule all_full:
     """Target untuk full pipeline dari accession (Phase 1-5)."""
@@ -131,10 +135,14 @@ rule download_sra:
         "envs/sra-tools.yaml"
     log:
         "logs/download_{sample}.log"
+    benchmark:
+        "benchmarks/download_{sample}.tsv"
     threads: 2
     resources:
-        mem_mb = 4000,
-        disk_mb = 15000
+        mem_mb   = 4000,
+        disk_mb  = 15000,
+        partition = "short",
+        runtime  = "01:00:00"
     shell:
         """
         echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..." | tee {log}
@@ -185,9 +193,13 @@ rule qc_fastp:
         "envs/fastp.yaml"
     log:
         "logs/fastp_{sample}.log"
+    benchmark:
+        "benchmarks/fastp_{sample}.tsv"
     threads: 4
     resources:
-        mem_mb = 8000
+        mem_mb   = 8000,
+        partition = "short",
+        runtime  = "00:30:00"
     shell:
         """
         echo "[Fastp] Quality control untuk {wildcards.sample}..." | tee {log}
@@ -224,9 +236,13 @@ rule download_hg38_index:
         "envs/bowtie2.yaml"
     log:
         "logs/download_hg38.log"
+    benchmark:
+        "benchmarks/download_hg38.tsv"
     threads: 4
     resources:
-        mem_mb = 16000
+        mem_mb   = 16000,
+        partition = "medium-small",
+        runtime  = "04:00:00"
     shell:
         """
         echo "[HG38] Downloading human reference genome..." | tee {log}
@@ -263,9 +279,13 @@ rule host_removal:
         "envs/bowtie2.yaml"
     log:
         "logs/host_removal_{sample}.log"
+    benchmark:
+        "benchmarks/host_removal_{sample}.tsv"
     threads: 8
     resources:
-        mem_mb = 16000
+        mem_mb   = 16000,
+        partition = "short",
+        runtime  = "02:00:00"
     shell:
         """
         echo "[Host Removal] {wildcards.sample} - removing human reads..." | tee {log}
@@ -277,7 +297,6 @@ rule host_removal:
             -1 {input.r1} -2 {input.r2} \
             --un-conc-gz data/nonhost_reads/{wildcards.sample}_%.fastq.gz \
             --very-sensitive \
-            --no-unal \
             -p {threads} \
             2> {output.stats} 1>>{log}
         
@@ -307,14 +326,21 @@ rule assembly_megahit:
         "envs/megahit.yaml"
     log:
         "logs/assembly_{sample}.log"
+    benchmark:
+        "benchmarks/assembly_{sample}.tsv"
     threads: 8
     resources:
-        mem_mb = 32000
+        mem_mb   = 32000,
+        partition = "medium-small",
+        runtime  = "06:00:00"
     shell:
         """
         echo "[MEGAHIT] Assembly untuk {wildcards.sample}..." | tee {log}
         
         mkdir -p data/contigs logs/assembly
+        
+        # Hapus output dir lama jika ada (mencegah error re-run)
+        rm -rf {params.outdir}
         
         megahit \
             -1 {input.r1} -2 {input.r2} \
@@ -349,7 +375,13 @@ rule run_rgi:
         "envs/rgi.yaml"
     log:
         "logs/rgi_{sample}.log"
+    benchmark:
+        "benchmarks/rgi_{sample}.tsv"
     threads: config["resources"]["threads_rgi"]
+    resources:
+        mem_mb   = 16000,
+        partition = "short",
+        runtime  = "03:00:00"
     shell:
         """
         echo "[RGI] Memproses {wildcards.sample}..." | tee {log}
@@ -393,7 +425,13 @@ rule run_mobsuite:
         "envs/mobsuite.yaml"
     log:
         "logs/mobsuite_{sample}.log"
+    benchmark:
+        "benchmarks/mobsuite_{sample}.tsv"
     threads: config["resources"]["threads_mobsuite"]
+    resources:
+        mem_mb   = 8000,
+        partition = "short",
+        runtime  = "01:00:00"
     shell:
         """
         echo "[MOBsuite] Memproses {wildcards.sample}..." | tee {log}
@@ -424,7 +462,13 @@ rule run_integronfinder:
         "envs/integronfinder.yaml"
     log:
         "logs/integron_{sample}.log"
+    benchmark:
+        "benchmarks/integron_{sample}.tsv"
     threads: config["resources"]["threads_integron"]
+    resources:
+        mem_mb   = 8000,
+        partition = "short",
+        runtime  = "01:00:00"
     shell:
         """
         echo "[IntegronFinder] Memproses {wildcards.sample}..." | tee {log}
@@ -456,7 +500,13 @@ rule run_isescan:
         "envs/isescan.yaml"
     log:
         "logs/isescan_{sample}.log"
+    benchmark:
+        "benchmarks/isescan_{sample}.tsv"
     threads: config["resources"]["threads_isescan"]
+    resources:
+        mem_mb   = 8000,
+        partition = "short",
+        runtime  = "01:00:00"
     shell:
         """
         echo "[ISEScan] Memproses {wildcards.sample}..." | tee {log}
@@ -493,6 +543,12 @@ rule colocalization:
         "envs/python.yaml"
     log:
         "logs/colocalization.log"
+    benchmark:
+        "benchmarks/colocalization.tsv"
+    resources:
+        mem_mb   = 4000,
+        partition = "short",
+        runtime  = "00:30:00"
     shell:
         """
         echo "[Co-localization] Mengintegrasikan data MGE dan AMR..." | tee {log}
@@ -547,7 +603,13 @@ rule run_statistics:
         "envs/r_stats.yaml"
     log:
         "logs/statistics.log"
+    benchmark:
+        "benchmarks/statistics.tsv"
     threads: config["resources"]["threads_stats"]
+    resources:
+        mem_mb   = 8000,
+        partition = "short",
+        runtime  = "01:00:00"
     shell:
         """
         echo "[Statistics] Menjalankan 04_run_stats.R..." | tee {log}
@@ -571,6 +633,12 @@ rule network_analysis:
         "envs/r_stats.yaml"
     log:
         "logs/network.log"
+    benchmark:
+        "benchmarks/network.tsv"
+    resources:
+        mem_mb   = 8000,
+        partition = "short",
+        runtime  = "01:00:00"
     shell:
         """
         echo "[Network] Menjalankan 05_network_analysis.R..." | tee {log}

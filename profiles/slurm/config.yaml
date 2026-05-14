@@ -1,110 +1,57 @@
-# SLURM Profile Configuration for HPC BRIN
-# ============================================
-# This profile configures Snakemake to submit jobs to SLURM scheduler.
+# =============================================================================
+# Snakemake SLURM Profile — HPC BRIN Mahameru
+# =============================================================================
+# Compatible: Snakemake v7.x & v8.x (cluster mode)
 #
-# Usage:
-#   snakemake all --profile profiles/slurm --use-conda
+# CARA PAKAI:
+#   Pilot run (MaxJobs=3, akun baru):
+#     snakemake all --profile profiles/slurm --use-conda --jobs 3
 #
-# Or with specific resource requests:
-#   snakemake all --profile profiles/slurm --jobs 50 --use-conda
+#   Full run (setelah admin upgrade MaxJobs):
+#     snakemake all --profile profiles/slurm --use-conda --jobs 50
+#
+#   BATCH PROCESSING 250 sampel → 5 batch:
+#     snakemake all --profile profiles/slurm --use-conda --batch all=1/5
+#     snakemake all --profile profiles/slurm --use-conda --batch all=2/5
+#     snakemake all --profile profiles/slurm --use-conda --batch all=3/5
+#     snakemake all --profile profiles/slurm --use-conda --batch all=4/5
+#     snakemake all --profile profiles/slurm --use-conda --batch all=5/5
+#
+#   CATATAN PENTING tentang Batch:
+#   - Gunakan SATU sample_map.csv yang berisi semua 250 sampel
+#   - Snakemake otomatis skip sampel yang output-nya sudah ada
+#   - Flag --batch membatasi berapa target yang diproses per run
+#   - Ini mencegah double-processing dan aman untuk resume setelah crash
+#
+# PARTISI YANG TERSEDIA DI MAHAMERU:
+#   short        : maks 1 hari  (24 jam) | 48 nodes
+#   medium-small : maks 3 hari  (72 jam) | 22 nodes
+#   medium-large : maks 3 hari  (72 jam) | 12 nodes
+#   interactive  : maks 2 jam             | 2  nodes
+# =============================================================================
 
-__default__:
-  # Default partition (adjust based on HPC BRIN available partitions)
-  partition: "regular"
-  
-  # Default walltime (will be overridden by rule-specific settings)
-  time: "02:00:00"
-  
-  # Default memory per job
-  mem: "8G"
-  
-  # Default CPUs per task
-  cpus-per-task: 2
-  
-  # Account (fill with your BRIN project account)
-  # account: "your_project_code"
-  
-  # Output directory for SLURM logs
-  output: "logs/slurm/%j.out"
-  error: "logs/slurm/%j.err"
-  
-  # Job name prefix
-  job-name: "amr_pipe_{rule}"
+# Perintah submit ke SLURM — membaca resources dari rule Snakefile
+cluster: "sbatch --partition={resources.partition} --mem={resources.mem_mb}M --cpus-per-task={threads} --time={resources.runtime} --output=logs/slurm/{rule}_%j.out --error=logs/slurm/{rule}_%j.err --job-name=amr_{rule}"
 
-# Phase 1: Download SRA
-download_sra:
-  time: "01:00:00"
-  mem: "8G"
-  cpus-per-task: 2
+# Max job concurrent — sesuaikan dengan MaxJobs akun kamu
+# Akun default BRIN: MaxJobs=3 | Setelah upgrade admin: ganti ke 50
+jobs: 3
 
-# Phase 2A: QC with fastp
-qc_fastp:
-  time: "00:30:00"
-  mem: "8G"
-  cpus-per-task: 4
+# Tunggu file muncul di GPFS filesystem setelah job selesai (detik)
+# GPFS di Mahameru perlu waktu sinkronisasi — JANGAN dikurangi
+latency-wait: 120
 
-# Phase 2B: Host removal with Bowtie2
-host_removal:
-  time: "02:00:00"
-  mem: "16G"
-  cpus-per-task: 8
+# Lanjutkan job lain meski satu job gagal
+keep-going: true
 
-# Download hg38 index (run once)
-download_hg38_index:
-  time: "04:00:00"
-  mem: "16G"
-  cpus-per-task: 4
+# Auto-rerun job yang tidak selesai (crash/timeout dari run sebelumnya)
+rerun-incomplete: true
 
-# Phase 2C: Assembly with MEGAHIT
-assembly_megahit:
-  time: "04:00:00"
-  mem: "32G"
-  cpus-per-task: 8
+# Aktifkan Conda environment management
+use-conda: true
 
-# Phase 3A: AMR detection with RGI
-run_rgi:
-  time: "02:00:00"
-  mem: "16G"
-  cpus-per-task: 8
-
-# Phase 3B: Plasmid detection with MOB-suite
-run_mobsuite:
-  time: "01:00:00"
-  mem: "8G"
-  cpus-per-task: 4
-
-# Phase 3C: Integron detection
-run_integronfinder:
-  time: "01:00:00"
-  mem: "8G"
-  cpus-per-task: 4
-
-# Phase 3D: IS/Transposon detection
-run_isescan:
-  time: "01:00:00"
-  mem: "8G"
-  cpus-per-task: 4
-
-# Phase 3E: Co-localization analysis
-colocalization:
-  time: "00:30:00"
-  mem: "4G"
-  cpus-per-task: 1
-
-# Phase 3F: Aggregation
-aggregate_by_population:
-  time: "00:15:00"
-  mem: "4G"
-  cpus-per-task: 1
-
-# Phase 4: Statistics
-run_statistics:
-  time: "01:00:00"
-  mem: "8G"
-  cpus-per-task: 4
-
-# Phase 5: Network analysis
-network_analysis:
-  time: "01:00:00"
-  mem: "8G"
-  cpus-per-task: 4
+# Default resources jika rule tidak mendefinisikan sendiri
+default-resources:
+  - partition="short"
+  - mem_mb=8000
+  - runtime="02:00:00"
