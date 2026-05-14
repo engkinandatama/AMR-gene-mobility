@@ -1,12 +1,6 @@
 # ============================================================
 # config.yaml — Konfigurasi Sentral Pipeline AMR Gene Mobility
 # ============================================================
-# Edit file ini untuk menyesuaikan parameter pipeline.
-# JANGAN edit Snakefile langsung kecuali untuk perubahan logika.
-#
-# Cara pakai:
-#   snakemake all --profile profiles/slurm --use-conda --cores 4
-# ============================================================
 
 # ------------------------------------------------------------
 # RUN IDENTITY — Ubah ini untuk memberi nama percobaan Bapak
@@ -18,221 +12,44 @@ sample_map: "data/metadata/pilot_map.csv"  # Path ke daftar sampel
 # PATHS
 # ------------------------------------------------------------
 paths:
-  contigs_dir:   "data/contigs"          # Folder berisi file .fasta
-  sample_map:    "data/metadata/sample_map.csv"
+  contigs_dir:   "data/contigs"
+  sample_map:    "data/metadata/pilot_map.csv"
   results_dir:   "results"
   logs_dir:      "logs"
 
 # ------------------------------------------------------------
 # SAMPLE SELECTION — Kriteria Kurasi Dataset (01_fetch_metadata.R)
 # ------------------------------------------------------------
-# Semua parameter seleksi sampel dipusatkan di sini.
-# Edit bagian ini untuk mengubah kriteria tanpa menyentuh kode R.
-#
 sample_selection:
-
-  # Target jumlah sampel per negara (maks; akan diambil semua jika < nilai ini)
   n_per_country: 50
-
-  # Seed untuk random sampling (jangan diubah agar hasil tetap reproducible)
   random_seed: 42
-
-  # --- HARD FILTERS (Wajib dipenuhi) ---
-
-  # [1] Lokasi pengambilan sampel
   body_site: "stool"
-
-  # [2] Negara-negara target beserta wilayah (region) masing-masing
-  #     Format: {kode_ISO3: region}
   countries:
     DNK: "Europe"
     CHN: "East_Asia"
     IND: "South_Asia"
     CMR: "Sub-Saharan_Africa"
     MDG: "Sub-Saharan_Africa"
-
-  # Nama lengkap per negara (untuk label di tabel dan figure)
   country_names:
     DNK: "Denmark"
     CHN: "China"
     IND: "India"
     CMR: "Cameroon"
     MDG: "Madagascar"
-
-  # [3] Hanya sampel yang punya NCBI accession (SRR/ERR)
   require_ncbi_accession: true
-
-  # [4] Hanya sampel yang ada data jumlah reads-nya
   require_number_reads: true
-
-  # [5] Minimum jumlah reads per sampel
-  min_reads: 10000000   # 10 juta reads
-
-  # [6] Status kesehatan subjek
+  min_reads: 10000000
   disease_status: "healthy"
-
-  # [7] Tidak sedang mengonsumsi antibiotik saat sampling
   antibiotics_current_use: "no"
-
-  # [8] Platform sekuensing yang diterima (Illumina only)
   sequencing_platforms:
     - "IlluminaHiSeq"
     - "IlluminaNextSeq"
-
-  # [9] Kondisi studi
   study_condition: "control"
-
-  # --- QC THRESHOLDS (Post-sampling report, tidak membuang sampel) ---
-
-  # Peringatan jika jumlah infant (usia < nilai ini) melebihi batas
-  infant_age_threshold: 3        # tahun
-  max_infant_per_country: 5      # jumlah infant sebelum warning muncul
-
+  infant_age_threshold: 3
+  max_infant_per_country: 5
 
 # ------------------------------------------------------------
-# RESOURCES — Dikonfigurasi untuk HPC 32 Core
-# ------------------------------------------------------------
-#
-# Strategi Paralelisme (--cores 32):
-#
-#   Snakemake menjalankan job secara paralel selama total thread
-#   tidak melebihi batas --cores yang diberikan.
-#
-#   Dengan 3 sampel dan 4 tool, Snakemake akan menjadwalkan:
-#   ┌─────────────────┬─────────┬───────────────────────────────┐
-#   │ Tool            │ Thread  │ Paralelisme (3 sampel)        │
-#   ├─────────────────┼─────────┼───────────────────────────────┤
-#   │ RGI             │ 8       │ 3 × 8 = 24 core (jalan semua) │
-#   │ MOBsuite        │ 4       │ 3 × 4 = 12 core               │
-#   │ IntegronFinder  │ 4       │ 3 × 4 = 12 core               │
-#   │ ISEScan         │ 4       │ 3 × 4 = 12 core               │
-#   └─────────────────┴─────────┴───────────────────────────────┘
-#   Semua 3 sampel RGI jalan BERSAMAAN (24/32 core terpakai).
-#   Sisa 8 core: Snakemake langsung mulai MOBsuite/Integron/ISEScan.
-#
-#   Untuk LAPTOP (ganti semua threads_* menjadi 2):
-resources:
-  threads_sra:         2     # Download SRA (network-bound, tidak perlu banyak)
-  threads_fastp:       4     # QC & trimming
-  threads_bowtie:      8     # Host removal (Bowtie2)
-  threads_megahit:    16     # Assembly — beri paling banyak
-  threads_rgi:         8     # Paling berat (BLAST) — beri paling banyak
-  threads_mobsuite:    4     # Sedang
-  threads_integron:    4     # Ringan, tapi bantu analisis integron lebih cepat
-  threads_isescan:     4     # Ringan
-  threads_stats:       4     # R stats (Phase 4 & 5)
-
-  # Alokasi memory maksimum (MB) per job — pastikan tidak melebihi RAM HPC
-  # HPC 32 core biasanya punya 64–256 GB RAM; nilai ini aman untuk BLAST
-  max_memory_mb:    32000
-
-# ------------------------------------------------------------
-# RGI (Resistance Gene Identifier)
-# ------------------------------------------------------------
-rgi:
-  # Metode alignment: BLAST (lebih akurat) atau DIAMOND (lebih cepat)
-  alignment_tool: "BLAST"
-
-  # Tipe input: contig (untuk hasil assembly) atau read (untuk raw reads)
-  input_type: "contig"
-
-  # Minimum identity (%) untuk melaporkan hit. Default RGI = 95
-  # Turunkan ke 80 jika ingin tangkap gen AMR yang lebih divergen
-  min_identity: 95
-
-  # Minimum coverage (%) untuk melaporkan hit. Default = 95
-  min_coverage: 95
-
-# ------------------------------------------------------------
-# MOB-suite (Plasmid Detection)
-# ------------------------------------------------------------
-mobsuite:
-  # Minimum contig length (bp) untuk dipertimbangkan MOBsuite
-  min_length: 1000
-
-# ------------------------------------------------------------
-# IntegronFinder
-# ------------------------------------------------------------
-integronfinder:
-  # Mode pencarian:
-  # "local-max"  : Cepat, menemukan integron di contig tanpa perlu seluruh replikon
-  # "linear"     : Untuk kontig linier (metagenom — pilihan ini)
-  # "circ"       : Untuk replikon sirkular
-  mode: "local-max"
-
-  # Apakah laporkan juga CALIN (putative) integron?
-  # true = lebih sensitif; false = hanya integron yang confirmed
-  report_calin: true
-
-# ------------------------------------------------------------
-# ISEScan (Insertion Sequence / Transposon)
-# ------------------------------------------------------------
-isescan:
-  # Tidak banyak parameter yang perlu diubah.
-  # ISEScan otomatis menggunakan semua contig dalam file .fasta.
-  # Hanya atur thread di bagian resources di atas.
-  pass: true
-
-# ------------------------------------------------------------
-# STATISTIK (04_run_stats.R)
-# ------------------------------------------------------------
-stats:
-  # Metode koreksi multiple testing: "BH" (Benjamini-Hochberg/FDR) atau "bonferroni"
-  p_adjust_method: "BH"
-
-  # Alpha threshold untuk signifikansi statistik
-  alpha: 0.05
-
-  # Jumlah permutasi untuk PERMANOVA (adonis2)
-  permanova_permutations: 999
-
-  # Minimum sampel per grup untuk Kruskal-Wallis (skip jika < nilai ini)
-  min_samples_per_group: 2
-
-# ------------------------------------------------------------
-# NETWORK ANALYSIS (05_network_analysis.R)
-# ------------------------------------------------------------
-network:
-  # Minimum frekuensi co-occurrence untuk membuat edge di network
-  # edge X-Y hanya dibuat jika AMR X dan MGE Y co-occur >= nilai ini
-  min_cooccurrence: 1
-
-  # Algoritma layout network: "fr" (Fruchterman-Reingold), "kk", "stress"
-  layout: "fr"
-
-# ------------------------------------------------------------
-# FASTP (Quality Control)
-# ------------------------------------------------------------
-fastp:
-  # Minimum quality score (Phred) untuk mempertahankan base
-  qualified_quality: 20
-
-  # Minimum panjang read setelah trimming
-  length_required: 50
-
-# ------------------------------------------------------------
-# MEGAHIT (Assembly)
-# ------------------------------------------------------------
-megahit:
-  # Preset assembly untuk metagenom
-  # "meta-large" optimal untuk gut metagenome dengan kedalaman tinggi
-  preset: "meta-large"
-
-  # Minimum panjang contig yang dilaporkan
-  min_contig_len: 1000
-
-# ------------------------------------------------------------
-# HOST REMOVAL (Bowtie2)
-# ------------------------------------------------------------
-host_removal:
-  # Path ke reference genome hg38 (di-download otomatis oleh pipeline)
-  hg38_index: "databases/hg38/hg38"
-
-  # Mode alignment: "very-sensitive" untuk sensitivity tinggi
-  alignment_mode: "very-sensitive"
-
-# ------------------------------------------------------------
-# RESOURCE ALLOCATION (Threads/CPU)
+# RESOURCES — Alokasi CPU & Thread (HPC Mahameru)
 # ------------------------------------------------------------
 resources:
   threads_sra: 2
@@ -244,3 +61,45 @@ resources:
   threads_integron: 4
   threads_isescan: 8
   threads_stats: 2
+  max_memory_mb: 32000
+
+# ------------------------------------------------------------
+# TOOL PARAMETERS
+# ------------------------------------------------------------
+rgi:
+  alignment_tool: "BLAST"
+  input_type: "contig"
+  min_identity: 95
+  min_coverage: 95
+
+mobsuite:
+  min_length: 1000
+
+integronfinder:
+  mode: "local-max"
+  report_calin: true
+
+isescan:
+  pass: true
+
+stats:
+  p_adjust_method: "BH"
+  alpha: 0.05
+  permanova_permutations: 999
+  min_samples_per_group: 2
+
+network:
+  min_cooccurrence: 1
+  layout: "fr"
+
+fastp:
+  qualified_quality: 20
+  length_required: 50
+
+megahit:
+  preset: "meta-large"
+  min_contig_len: 1000
+
+host_removal:
+  hg38_index: "databases/hg38/hg38"
+  alignment_mode: "very-sensitive"
