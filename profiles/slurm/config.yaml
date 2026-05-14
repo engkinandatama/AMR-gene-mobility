@@ -54,4 +54,4 @@ use-conda: true
 default-resources:
   - partition="short"
   - mem_mb=8000
-  - runtime="02:00:00"
+  - runtime=120

@@ -258,7 +258,7 @@ rule download_hg38_index:
     resources:
         mem_mb   = 16000,
         partition = "medium-small",
-        runtime  = "04:00:00"
+        runtime = 240,
     shell:
         """
         echo "[HG38] Downloading human reference genome..." | tee {log}
@@ -301,7 +301,7 @@ rule host_removal:
     resources:
         mem_mb   = 16000,
         partition = "short",
-        runtime  = "02:00:00"
+        runtime  = 120
     shell:
         """
         echo "[Host Removal] {wildcards.sample} - removing human reads..." | tee {log}
