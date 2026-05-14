@@ -1,6 +1,11 @@
 configfile: "config.yaml"
 
-"""
+import os
+import pandas as pd
+
+# Pastikan folder log SLURM ada (wajib untuk HPC)
+os.makedirs("logs/slurm", exist_ok=True)
+os.makedirs("benchmarks", exist_ok=True)
 Snakefile: AMR Gene Mobility Pipeline
 Versi: 4.0 (End-to-End)
 
