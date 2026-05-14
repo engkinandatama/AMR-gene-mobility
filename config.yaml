@@ -2,24 +2,15 @@
 # config.yaml — Konfigurasi Sentral Pipeline AMR Gene Mobility
 # ============================================================
 
-# ------------------------------------------------------------
-# RUN IDENTITY — Ubah ini untuk memberi nama percobaan Bapak
-# ------------------------------------------------------------
-run_id: "pilot_run"               # Nama folder output (results/pilot_run/)
-sample_map: "data/metadata/pilot_map.csv"  # Path ke daftar sampel
+run_id: "pilot_run"
+sample_map: "data/metadata/pilot_map.csv"
 
-# ------------------------------------------------------------
-# PATHS
-# ------------------------------------------------------------
 paths:
   contigs_dir:   "data/contigs"
   sample_map:    "data/metadata/pilot_map.csv"
   results_dir:   "results"
   logs_dir:      "logs"
 
-# ------------------------------------------------------------
-# SAMPLE SELECTION — Kriteria Kurasi Dataset (01_fetch_metadata.R)
-# ------------------------------------------------------------
 sample_selection:
   n_per_country: 50
   random_seed: 42
@@ -48,9 +39,6 @@ sample_selection:
   infant_age_threshold: 3
   max_infant_per_country: 5
 
-# ------------------------------------------------------------
-# RESOURCES — Alokasi CPU & Thread (HPC Mahameru)
-# ------------------------------------------------------------
 resources:
   threads_sra: 2
   threads_fastp: 4
@@ -63,9 +51,6 @@ resources:
   threads_stats: 2
   max_memory_mb: 32000
 
-# ------------------------------------------------------------
-# TOOL PARAMETERS
-# ------------------------------------------------------------
 rgi:
   alignment_tool: "BLAST"
   input_type: "contig"
