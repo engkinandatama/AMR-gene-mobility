@@ -6,6 +6,7 @@ plan/
 output/
 .dev/ 
 data/
+benchmarks/
 
 # Environments
 amr-env/

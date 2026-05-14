@@ -25,7 +25,8 @@ import pandas as pd
 import os
 import glob as glob_mod
 
-SAMPLE_MAP_FILE = config["paths"]["sample_map"]
+# Prioritaskan file mapping dari command line (--config sample_map=...), jika tidak ada pakai default dari config.yaml
+SAMPLE_MAP_FILE = config.get("sample_map", config["paths"]["sample_map"])
 
 if os.path.exists(SAMPLE_MAP_FILE):
     sample_df = pd.read_csv(SAMPLE_MAP_FILE)
@@ -36,7 +37,9 @@ else:
                for f in glob_mod.glob("data/contigs/*.fasta")]
     ACCESSION_MAP = {}
 
-print(f"[Snakemake] Sampel terdeteksi: {SAMPLES}")
+preview = SAMPLES[:5]
+preview_str = str(preview) + (" ..." if len(SAMPLES) > 5 else "")
+print(f"[Snakemake] Sampel terdeteksi: {preview_str}")
 print(f"[Snakemake] Total: {len(SAMPLES)} sampel")
 
 def get_input_type(wildcards):
@@ -251,7 +254,7 @@ rule download_hg38_index:
         "logs/download_hg38.log"
     benchmark:
         "benchmarks/download_hg38.tsv"
-    threads: 4
+    threads: config["resources"]["threads_bowtie"]
     resources:
         mem_mb   = 16000,
         partition = "medium-small",
@@ -588,6 +591,12 @@ rule aggregate_by_population:
         "envs/python.yaml"
     log:
         "logs/aggregate.log"
+    benchmark:
+        "benchmarks/aggregate.tsv"
+    resources:
+        mem_mb   = 4000,
+        partition = "short",
+        runtime  = "00:30:00"
     shell:
         """
         echo "[Aggregate] Merangkum data per populasi..." | tee {log}
@@ -666,9 +675,15 @@ rule cleanup_intermediates:
     """
     Hapus file intermediate (raw reads, QC reads, non-host reads)
     untuk menghemat storage setelah assembly sukses.
+    Dependency guard: hanya hapus SETELAH RGI dan MOBsuite selesai,
+    agar file FASTQ tidak terhapus sebelum analisis downstream beres.
     """
     input:
-        contigs = "data/contigs/{sample}.fasta"
+        contigs  = "data/contigs/{sample}.fasta",
+        rgi      = "results/rgi/{sample}_rgi.txt",
+        mob      = "results/mobsuite/{sample}_plasmid.txt",
+        integron = "results/integron/{sample}_integrons.tsv",
+        isescan  = "results/isescan/{sample}_is.tsv"
     output:
         touch("logs/cleanup_{sample}.done")
     shell:
@@ -680,5 +695,5 @@ rule cleanup_intermediates:
         rm -f data/nonhost_reads/{wildcards.sample}_*.fastq.gz 2>/dev/null || true
         rm -rf data/assembly/{wildcards.sample} 2>/dev/null || true
         
-        echo "[Cleanup] Done."
+        echo "[Cleanup] Done for {wildcards.sample}."
         """

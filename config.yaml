@@ -106,6 +106,10 @@ sample_selection:
 #
 #   Untuk LAPTOP (ganti semua threads_* menjadi 2):
 resources:
+  threads_sra:         2     # Download SRA (network-bound, tidak perlu banyak)
+  threads_fastp:       4     # QC & trimming
+  threads_bowtie:      8     # Host removal (Bowtie2)
+  threads_megahit:    16     # Assembly — beri paling banyak
   threads_rgi:         8     # Paling berat (BLAST) — beri paling banyak
   threads_mobsuite:    4     # Sedang
   threads_integron:    4     # Ringan, tapi bantu analisis integron lebih cepat
