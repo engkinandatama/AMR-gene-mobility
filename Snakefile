@@ -7,6 +7,9 @@ import pandas as pd
 os.makedirs("logs/slurm", exist_ok=True)
 os.makedirs("benchmarks", exist_ok=True)
 
+# Rule yang harus jalan di Login Node (karena butuh internet atau proses ringan)
+localrules: download_sra, cleanup_intermediates, download_hg38_index
+
 """
 Snakefile: AMR Gene Mobility Pipeline
 Versi: 4.0 (End-to-End)
