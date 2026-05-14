@@ -5,8 +5,14 @@
 # JANGAN edit Snakefile langsung kecuali untuk perubahan logika.
 #
 # Cara pakai:
-#   snakemake phase3 --cores 32 --use-conda --configfile config.yaml
+#   snakemake all --profile profiles/slurm --use-conda --cores 4
 # ============================================================
+
+# ------------------------------------------------------------
+# RUN IDENTITY — Ubah ini untuk memberi nama percobaan Bapak
+# ------------------------------------------------------------
+run_id: "pilot_run"               # Nama folder output (results/pilot_run/)
+sample_map: "data/metadata/pilot_map.csv"  # Path ke daftar sampel
 
 # ------------------------------------------------------------
 # PATHS

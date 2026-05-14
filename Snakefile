@@ -9,14 +9,20 @@ RUN_ID = config.get("run_id", "pilot_run")
 OUT = f"results/{RUN_ID}"
 
 # Otomatis buat folder utama agar SLURM tidak ngambek
+# logs/slurm di root = untuk system log dari SLURM (sbatch --output/--error)
+# {OUT}/logs/slurm  = untuk per-rule log dari pipeline
+os.makedirs("logs/slurm", exist_ok=True)
 os.makedirs(f"{OUT}/logs/slurm", exist_ok=True)
 os.makedirs(f"{OUT}/benchmarks", exist_ok=True)
+os.makedirs(f"{OUT}/tmp", exist_ok=True)
 
 # Rule yang harus jalan di Login Node
 localrules: all, download_sra, cleanup_intermediates, download_hg38_index
 
 # --- METADATA LOADING ---
-SAMPLES = pd.read_csv(config["sample_map"])["sample_id"].unique()
+# Support dua cara: --config sample_map=... atau dari config.yaml
+_sample_map = config.get("sample_map", config.get("paths", {}).get("sample_map", "data/metadata/pilot_map.csv"))
+SAMPLES = pd.read_csv(_sample_map)["sample_id"].unique()
 
 rule all:
     input:
@@ -78,6 +84,7 @@ rule qc_fastp:
         runtime = 30
     shell:
         """
+        mkdir -p "{OUT}/data/qc_reads" "{OUT}/logs/qc"
         fastp -i "{input.r1}" -I "{input.r2}" -o "{output.qc1}" -O "{output.qc2}" \
               --thread {threads} --html "{output.html}" --json "{output.json}" 2>>"{log}"
         """
