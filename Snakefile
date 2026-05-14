@@ -43,22 +43,35 @@ rule download_sra:
     shell:
         """
         echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..." | tee "{log}"
-        mkdir -p "{OUT}/data/raw_reads" "{OUT}/tmp/download_{wildcards.sample}"
+        mkdir -p "{OUT}/data/raw_reads"
+        tmp_run="{OUT}/tmp/download_{wildcards.sample}"
+        mkdir -p "$tmp_run"
         
         IFS=';' read -ra ADDR <<< "{params.accession}"
         for acc in "${{ADDR[@]}}"; do
             echo "[Download] Memproses run: $acc" >> "{log}"
-            prefetch "$acc" --max-size 50G 2>>"{log}" || echo "[WARN] prefetch $acc gagal..." >>"{log}"
-            fasterq-dump --split-files --threads {threads} "$acc" --outdir "{OUT}/tmp/download_{wildcards.sample}" 2>>"{log}"
-            cat "{OUT}/tmp/download_{wildcards.sample}/${{acc}}_1.fastq" >> "{OUT}/tmp/combined_{wildcards.sample}_1.fastq"
-            cat "{OUT}/tmp/download_{wildcards.sample}/${{acc}}_2.fastq" >> "{OUT}/tmp/combined_{wildcards.sample}_2.fastq"
-            rm -rf "$acc" "{OUT}/tmp/download_{wildcards.sample}/${{acc}}*"
+            prefetch "$acc" --max-size 50G >>"{log}" 2>&1 || echo "[WARN] prefetch $acc gagal, mencoba fasterq-dump langsung..." >>"{log}"
+            fasterq-dump --split-files --threads {threads} "$acc" --outdir "$tmp_run" >>"{log}" 2>&1
+            
+            # Deteksi: Apakah Paired-End (_1 dan _2) atau Single-End (.fastq saja)?
+            if [ -f "$tmp_run/${acc}_1.fastq" ]; then
+                cat "$tmp_run/${acc}_1.fastq" >> "$tmp_run/combined_1.fastq"
+                cat "$tmp_run/${acc}_2.fastq" >> "$tmp_run/combined_2.fastq"
+            elif [ -f "$tmp_run/${acc}.fastq" ]; then
+                echo "[INFO] Sampel $acc terdeteksi Single-End." >> "{log}"
+                cat "$tmp_run/${acc}.fastq" >> "$tmp_run/combined_1.fastq"
+                touch "$tmp_run/combined_2.fastq" # Buat file kosong untuk R2 agar Snakemake tidak error
+            fi
+            
+            rm -rf "$acc" "$tmp_run/${acc}"*
         done
         
-        pigz -p {threads} -c "{OUT}/tmp/combined_{wildcards.sample}_1.fastq" > "{output.r1}"
-        pigz -p {threads} -c "{OUT}/tmp/combined_{wildcards.sample}_2.fastq" > "{output.r2}"
-        rm "{OUT}/tmp/combined_{wildcards.sample}_1.fastq" "{OUT}/tmp/combined_{wildcards.sample}_2.fastq"
-        rm -rf "{OUT}/tmp/download_{wildcards.sample}"
+        # Kompresi ke folder tujuan
+        pigz -p {threads} -c "$tmp_run/combined_1.fastq" > "{output.r1}"
+        pigz -p {threads} -c "$tmp_run/combined_2.fastq" > "{output.r2}"
+        
+        # Bersihkan folder temp
+        rm -rf "$tmp_run"
         """
 
 rule qc_fastp:
@@ -87,25 +100,44 @@ rule qc_fastp:
               --thread {threads} --html "{output.html}" --json "{output.json}" 2>>"{log}"
         """
 
-rule download_hg38_index:
-    """Download hg38 reference untuk host removal"""
+# ------------------------------------------------------------
+# 1. HOST REMOVAL (hg38 Index)
+# ------------------------------------------------------------
+
+rule download_hg38_fasta:
+    """Download hg38 reference genome FASTA (Localrule)"""
     output:
-        index = protected("databases/hg38/hg38.1.bt2")
-    conda:
-        "envs/bowtie2.yaml"
+        fasta = "databases/hg38/hg38.fa"
     log:
-        f"{OUT}/logs/download_hg38.log"
-    threads: 8
-    resources:
-        mem_mb = 16000,
-        partition = "medium-small",
-        runtime = 240
+        f"results/{RUN_ID}/logs/download_hg38_fasta.log"
+    localrule: True
     shell:
         """
-        echo "[HG38] Downloading..." | tee "{log}"
+        echo "[HG38] Downloading FASTA..." | tee -a "{log}"
         mkdir -p databases/hg38
-        wget -qO- https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz | gunzip -c > databases/hg38/hg38.fa 2>>"{log}"
-        bowtie2-build --threads {threads} databases/hg38/hg38.fa databases/hg38/hg38 2>>"{log}"
+        if [ ! -f "{output.fasta}" ]; then
+            wget -qO- https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz | gunzip -c > "{output.fasta}" 2>> "{log}"
+        fi
+        """
+
+rule build_hg38_index:
+    """Build Bowtie2 index for hg38 (SLURM)"""
+    input:
+        fasta = "databases/hg38/hg38.fa"
+    output:
+        index = "databases/hg38/hg38.1.bt2"
+    log:
+        f"results/{RUN_ID}/logs/build_hg38_index.log"
+    threads: 16
+    resources:
+        mem_mb = 32000,
+        runtime = 360
+    conda:
+        "envs/bowtie2.yaml"
+    shell:
+        """
+        echo "[HG38] Building Bowtie2 Index (this may take 1-2 hours)..." | tee -a "{log}"
+        bowtie2-build --threads {threads} "{input.fasta}" databases/hg38/hg38 2>> "{log}"
         """
 
 rule host_removal:
