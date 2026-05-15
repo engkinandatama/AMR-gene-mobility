@@ -218,8 +218,9 @@ country_map <- data.frame(
 sample_map <- final_samples %>%
   select(country, accession = NCBI_accession) %>%
   left_join(country_map, by = "country") %>%
-  # Ganti ";" jadi "_" di sample_id supaya aman di sistem file Linux
-  mutate(sample_id = paste0(country, "_", gsub(";", "_", accession))) %>%
+  # sample_id pakai ID pertama saja supaya pendek dan aman (maks 255 char di Linux)
+  # accession tetap simpan semuanya (pakai ;) supaya Snakemake download semua
+  mutate(sample_id = paste0(country, "_", sub(";.*", "", accession))) %>%
   select(sample_id, country, country_name, region, accession)
 
 write.csv(sample_map,
