@@ -53,8 +53,10 @@ rule download_sra:
         IFS=';' read -ra ADDR <<< "{params.accession}"
         for acc in "${{ADDR[@]}}"; do
             echo "[Download] Memproses run: ${{acc}}"
-            prefetch "${{acc}}" --max-size 50G || echo "[WARN] prefetch ${{acc}} gagal, mencoba fasterq-dump langsung..."
-            fasterq-dump --split-files --threads {threads} "${{acc}}" --outdir "$tmp_run" --temp "$tmp_run"
+            # Kita paksa prefetch download ke folder tmp biar root bersih
+            prefetch "${{acc}}" --output-directory "$tmp_run" -O "$tmp_run" --max-size 50G || echo "[WARN] prefetch ${{acc}} gagal..."
+            
+            fasterq-dump --split-files --threads {threads} "$tmp_run/${{acc}}" --outdir "$tmp_run" --temp "$tmp_run"
             
             # Deteksi: Apakah Paired-End (_1 dan _2) atau Single-End (.fastq saja)?
             if [ -f "$tmp_run/${{acc}}_1.fastq" ]; then
