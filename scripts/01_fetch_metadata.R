@@ -91,6 +91,10 @@ target_data <- meta %>%
 
   # [9] Kondisi studi = control
   filter(study_condition %in% study_cond) %>%
+  
+  # [10] DEDUPLIKASI SUBJEK: Satu orang cuma boleh 1 sampel (Penting untuk independensi data!)
+  arrange(desc(number_reads)) %>% # Pilih sampel dengan reads terbanyak jika satu orang punya banyak sampel
+  distinct(subject_id, .keep_all = TRUE) %>%
 
   select(country, NCBI_accession, study_name, sample_id, subject_id,
          number_reads, disease, age, gender, sequencing_platform,
