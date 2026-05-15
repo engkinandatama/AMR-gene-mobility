@@ -57,18 +57,35 @@ rule download_sra:
             if [ -f "$tmp_run/${{acc}}_1.fastq" ]; then
                 cat "$tmp_run/${{acc}}_1.fastq" >> "$tmp_run/combined_1.fastq"
                 cat "$tmp_run/${{acc}}_2.fastq" >> "$tmp_run/combined_2.fastq"
+                rm -f "$tmp_run/${{acc}}_1.fastq" "$tmp_run/${{acc}}_2.fastq"
             elif [ -f "$tmp_run/${{acc}}.fastq" ]; then
                 echo "[INFO] Sampel ${{acc}} terdeteksi Single-End." >> "{log}"
                 cat "$tmp_run/${{acc}}.fastq" >> "$tmp_run/combined_1.fastq"
-                touch "$tmp_run/combined_2.fastq" # Buat file kosong untuk R2 agar Snakemake tidak error
+                touch "$tmp_run/combined_2.fastq"
+                rm -f "$tmp_run/${{acc}}.fastq"
             fi
             
-            rm -rf "${{acc}}" "$tmp_run/${{acc}}"*
+            rm -rf "${{acc}}"
         done
         
-        # Kompresi ke folder tujuan
-        pigz -p {threads} -c "$tmp_run/combined_1.fastq" > "{output.r1}"
-        pigz -p {threads} -c "$tmp_run/combined_2.fastq" > "{output.r2}"
+        # Kompresi ke folder tujuan (Hanya jika file ada)
+        if [ -f "$tmp_run/combined_1.fastq" ]; then
+            pigz -p {threads} -c "$tmp_run/combined_1.fastq" > "{output.r1}"
+            rm -f "$tmp_run/combined_1.fastq"
+        else
+            echo "[ERROR] File combined_1.fastq tidak ditemukan!" >> "{log}"
+            exit 1
+        fi
+        
+        if [ -f "$tmp_run/combined_2.fastq" ]; then
+            pigz -p {threads} -c "$tmp_run/combined_2.fastq" > "{output.r2}"
+            rm -f "$tmp_run/combined_2.fastq"
+        else
+            # Jika R2 tidak ada, buat file kosong agar pipeline tetap jalan (untuk SE)
+            touch "$tmp_run/empty_r2.fastq"
+            pigz -p {threads} -c "$tmp_run/empty_r2.fastq" > "{output.r2}"
+            rm -f "$tmp_run/empty_r2.fastq"
+        fi
         
         # Bersihkan folder temp
         rm -rf "$tmp_run"
