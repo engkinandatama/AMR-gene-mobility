@@ -12,7 +12,7 @@ paths:
   logs_dir:      "logs"
 
 sample_selection:
-  n_per_country: 50
+  n_per_country: 1
   random_seed: 42
   body_site: "stool"
   countries:
