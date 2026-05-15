@@ -245,9 +245,6 @@ rule assembly_megahit:
         runtime=360
     shell:
         """
-        exec > "{log}" 2>&1
-        set -x
-        
         mkdir -p "{OUT}/logs/assembly"
         rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
         
@@ -255,13 +252,13 @@ rule assembly_megahit:
                 -o "{OUT}/tmp/assembly/{wildcards.sample}" \
                 --out-prefix "{wildcards.sample}" \
                 --mem-flag 2 \
-                -t {threads} 2>&1 | tee "{output.m_log}"
+                -t {threads} > "{output.m_log}" 2>&1
         
         if [ -f "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" ]; then
             mv "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}"
             rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
         else
-            echo "[ERROR] Megahit failed to produce contigs!"
+            echo "[ERROR] Megahit failed! Check {output.m_log} for details."
             exit 1
         fi
         """
