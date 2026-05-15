@@ -230,7 +230,7 @@ rule assembly_megahit:
     log:
         f"{OUT}/logs/assembly/{{sample}}.log"
     conda:
-        "envs/assembly.yaml"
+        "envs/megahit.yaml"
     threads: 16
     resources:
         mem_mb=64000,
