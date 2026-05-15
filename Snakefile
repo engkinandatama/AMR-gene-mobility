@@ -31,8 +31,8 @@ rule all:
 rule download_sra:
     """Mengunduh data FASTQ dari NCBI SRA"""
     output:
-        r1 = f"{OUT}/data/raw_reads/{{sample}}_1.fastq.gz",
-        r2 = f"{OUT}/data/raw_reads/{{sample}}_2.fastq.gz"
+        r1 = temp(f"{OUT}/data/raw_reads/{{sample}}_1.fastq"),
+        r2 = temp(f"{OUT}/data/raw_reads/{{sample}}_2.fastq")
     params:
         accession = lambda wildcards: pd.read_csv(config["sample_map"]).set_index("sample_id").loc[wildcards.sample, "accession"]
     conda:
@@ -71,27 +71,43 @@ rule download_sra:
             rm -rf "${{acc}}"
         done
         
-        # Kompresi ke folder tujuan (Hanya jika file ada)
+        # Pindahkan file mentah ke folder tujuan
         if [ -f "$tmp_run/combined_1.fastq" ]; then
-            pigz -p {threads} -c "$tmp_run/combined_1.fastq" > "{output.r1}"
-            rm -f "$tmp_run/combined_1.fastq"
+            mv "$tmp_run/combined_1.fastq" "{output.r1}"
         else
             echo "[ERROR] File combined_1.fastq tidak ditemukan!"
             exit 1
         fi
         
         if [ -f "$tmp_run/combined_2.fastq" ]; then
-            pigz -p {threads} -c "$tmp_run/combined_2.fastq" > "{output.r2}"
-            rm -f "$tmp_run/combined_2.fastq"
+            mv "$tmp_run/combined_2.fastq" "{output.r2}"
         else
-            # Jika R2 tidak ada, buat file kosong agar pipeline tetap jalan (untuk SE)
-            touch "$tmp_run/empty_r2.fastq"
-            pigz -p {threads} -c "$tmp_run/empty_r2.fastq" > "{output.r2}"
-            rm -f "$tmp_run/empty_r2.fastq"
+            touch "{output.r2}"
         fi
         
         # Bersihkan folder temp
         rm -rf "$tmp_run"
+        """
+
+rule compress_sra:
+    """Mengompres file FASTQ di Cluster Node"""
+    input:
+        r1 = f"{OUT}/data/raw_reads/{{sample}}_1.fastq",
+        r2 = f"{OUT}/data/raw_reads/{{sample}}_2.fastq"
+    output:
+        r1 = f"{OUT}/data/raw_reads/{{sample}}_1.fastq.gz",
+        r2 = f"{OUT}/data/raw_reads/{{sample}}_2.fastq.gz"
+    conda:
+        "envs/sra-tools.yaml"
+    threads: 4
+    resources:
+        mem_mb=16000,
+        partition="short",
+        runtime=60
+    shell:
+        """
+        pigz -p {threads} -c {input.r1} > {output.r1} && rm -f {input.r1}
+        pigz -p {threads} -c {input.r2} > {output.r2} && rm -f {input.r2}
         """
 
 rule qc_fastp:
