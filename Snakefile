@@ -42,16 +42,19 @@ rule download_sra:
     threads: 2
     shell:
         """
-        echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..." | tee "{log}"
+        exec > "{log}" 2>&1
+        set -x
+        
+        echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..."
         mkdir -p "{OUT}/data/raw_reads"
         tmp_run="{OUT}/tmp/download_{wildcards.sample}"
         mkdir -p "$tmp_run"
         
         IFS=';' read -ra ADDR <<< "{params.accession}"
         for acc in "${{ADDR[@]}}"; do
-            echo "[Download] Memproses run: ${{acc}}" >> "{log}"
-            prefetch "${{acc}}" --max-size 50G >>"{log}" 2>&1 || echo "[WARN] prefetch ${{acc}} gagal, mencoba fasterq-dump langsung..." >>"{log}"
-            fasterq-dump --split-files --threads {threads} "${{acc}}" --outdir "$tmp_run" >>"{log}" 2>&1
+            echo "[Download] Memproses run: ${{acc}}"
+            prefetch "${{acc}}" --max-size 50G || echo "[WARN] prefetch ${{acc}} gagal, mencoba fasterq-dump langsung..."
+            fasterq-dump --split-files --threads {threads} "${{acc}}" --outdir "$tmp_run" --temp "$tmp_run"
             
             # Deteksi: Apakah Paired-End (_1 dan _2) atau Single-End (.fastq saja)?
             if [ -f "$tmp_run/${{acc}}_1.fastq" ]; then
@@ -59,7 +62,7 @@ rule download_sra:
                 cat "$tmp_run/${{acc}}_2.fastq" >> "$tmp_run/combined_2.fastq"
                 rm -f "$tmp_run/${{acc}}_1.fastq" "$tmp_run/${{acc}}_2.fastq"
             elif [ -f "$tmp_run/${{acc}}.fastq" ]; then
-                echo "[INFO] Sampel ${{acc}} terdeteksi Single-End." >> "{log}"
+                echo "[INFO] Sampel ${{acc}} terdeteksi Single-End."
                 cat "$tmp_run/${{acc}}.fastq" >> "$tmp_run/combined_1.fastq"
                 touch "$tmp_run/combined_2.fastq"
                 rm -f "$tmp_run/${{acc}}.fastq"
@@ -73,7 +76,7 @@ rule download_sra:
             pigz -p {threads} -c "$tmp_run/combined_1.fastq" > "{output.r1}"
             rm -f "$tmp_run/combined_1.fastq"
         else
-            echo "[ERROR] File combined_1.fastq tidak ditemukan!" >> "{log}"
+            echo "[ERROR] File combined_1.fastq tidak ditemukan!"
             exit 1
         fi
         
