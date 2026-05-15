@@ -220,32 +220,43 @@ rule host_removal:
         """
 
 rule assembly_megahit:
-    """Perakitan metagenome de novo"""
+    """Metagenome Assembly menggunakan MEGAHIT"""
     input:
         r1 = f"{OUT}/data/nonhost_reads/{{sample}}_1.fastq.gz",
         r2 = f"{OUT}/data/nonhost_reads/{{sample}}_2.fastq.gz"
     output:
-        contigs = f"{OUT}/data/contigs/{{sample}}.fa",
-        log_file = f"{OUT}/logs/assembly/{{sample}}.megahit.log"
-    params:
-        outdir = f"{OUT}/tmp/assembly/{{sample}}",
-        preset = "meta-sensitive",
-        min_contig = 500
-    conda:
-        "envs/megahit.yaml"
+        fa = f"{OUT}/data/contigs/{{sample}}.fa",
+        m_log = f"{OUT}/logs/assembly/{{sample}}.megahit.log"
     log:
         f"{OUT}/logs/assembly/{{sample}}.log"
+    conda:
+        "envs/assembly.yaml"
     threads: 16
     resources:
-        mem_mb = 32000,
-        partition = "medium-small",
-        runtime = 360
+        mem_mb=64000,
+        partition="medium-small",
+        runtime=360
     shell:
         """
-        rm -rf "{params.outdir}"
-        megahit -1 "{input.r1}" -2 "{input.r2}" -o "{params.outdir}" \
-                --out-prefix "{wildcards.sample}" -t {threads} 2>&1 | tee "{output.log_file}"
-        mv "{params.outdir}/{wildcards.sample}.contigs.fa" "{output.contigs}"
+        exec > "{log}" 2>&1
+        set -x
+        
+        mkdir -p "{OUT}/logs/assembly"
+        rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
+        
+        megahit -1 "{input.r1}" -2 "{input.r2}" \
+                -o "{OUT}/tmp/assembly/{wildcards.sample}" \
+                --out-prefix "{wildcards.sample}" \
+                --mem-flag 2 \
+                -t {threads} 2>&1 | tee "{output.m_log}"
+        
+        if [ -f "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" ]; then
+            mv "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}"
+            rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
+        else
+            echo "[ERROR] Megahit failed to produce contigs!"
+            exit 1
+        fi
         """
 
 rule run_rgi:
