@@ -39,7 +39,7 @@ rule download_sra:
         "envs/sra-tools.yaml"
     log:
         f"{OUT}/logs/download_{{sample}}.log"
-    threads: 2
+    threads: 1
     shell:
         """
         exec > "{log}" 2>&1
