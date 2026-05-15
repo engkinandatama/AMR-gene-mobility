@@ -371,7 +371,9 @@ rule colocalization:
         f"{OUT}/logs/colocalization/{{sample}}.log"
     shell:
         """
-        python scripts/02_find_colocalization.py --out "{output.csv}" --sample-map "{config[sample_map]}" 2>&1 | tee -a "{log}"
+        python scripts/02_find_colocalization.py --out "{output.csv}" \
+            --base-dir "{OUT}" --sample "{wildcards.sample}" \
+            --sample-map "{_sample_map}" 2>&1 | tee -a "{log}"
         """
 
 rule aggregate_by_population:
@@ -386,7 +388,16 @@ rule aggregate_by_population:
         f"{OUT}/logs/aggregate_{{population}}.log"
     shell:
         """
-        python scripts/03_aggregate_by_population.py "{output.csv}" 2>&1 | tee -a "{log}"
+        # Gabung semua file CSV colocalization menjadi satu file sementara
+        tmp_summary="{OUT}/tmp/{{population}}_all_coloc.csv"
+        mkdir -p "{OUT}/tmp"
+        head -n 1 {input.csvs[0]} > "$tmp_summary"
+        for f in {input.csvs}; do tail -n +2 "$f" >> "$tmp_summary"; done
+        
+        python scripts/03_aggregate_by_population.py --input "$tmp_summary" \
+            --output-dir "{OUT}/analysis/aggregated" --pop "{wildcards.population}" 2>&1 | tee -a "{log}"
+        
+        rm "$tmp_summary"
         """
 
 rule run_statistics:

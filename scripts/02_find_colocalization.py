@@ -124,97 +124,74 @@ def main():
         description="Integrasi AMR + MGE untuk analisis co-localization dan HGT linkage"
     )
     parser.add_argument("--out", required=True, help="Path file CSV output")
+    parser.add_argument("--base-dir", required=True, help="Base results directory (e.g. results/pilot_run)")
+    parser.add_argument("--sample", required=True, help="Sample ID to process")
     parser.add_argument("--sample-map", default="data/metadata/sample_map.csv",
                         help="Path ke sample_map.csv (country/region mapping)")
     args = parser.parse_args()
 
+    base_dir = args.base_dir.rstrip("/")
+    sample_id = args.sample
+
     # Load sample map
-    print("  [INFO] Membaca sample_map.csv...")
     try:
         sample_map = pd.read_csv(args.sample_map)
-        # Index: sample_id -> dict
         map_dict = sample_map.set_index("sample_id").to_dict("index")
-        print(f"  [INFO] {len(map_dict)} sampel ditemukan di sample_map.")
     except Exception as e:
         print(f"  [ERROR] Gagal membaca sample_map.csv: {e}", file=sys.stderr)
         sys.exit(1)
 
-    # Temukan semua file RGI yang ada
-    rgi_files = glob.glob("results/rgi/*_rgi.txt")
-    if not rgi_files:
-        print("  [ERROR] Tidak ada file RGI ditemukan di results/rgi/.", file=sys.stderr)
+    # --- Metadata ---
+    meta = map_dict.get(sample_id, {})
+    country      = meta.get("country", "Unknown")
+    country_name = meta.get("country_name", "Unknown")
+    region       = meta.get("region", "Unknown")
+
+    # --- Path Input ---
+    rgi_file = f"{base_dir}/analysis/rgi/{sample_id}.tsv"
+    mob_file = f"{base_dir}/analysis/mobsuite/{sample_id}/contig_report.txt"
+    integron_file = f"{base_dir}/analysis/integron/{sample_id}.tsv"
+    is_file = f"{base_dir}/analysis/isescan/{sample_id}.tsv"
+
+    print(f"\n  [PROCESS] Sample: {sample_id}")
+
+    # --- Load RGI (Wajib ada) ---
+    rgi_df = load_rgi(rgi_file)
+    if rgi_df.empty:
+        print(f"    [ERROR] RGI file tidak ditemukan atau kosong: {rgi_file}")
         sys.exit(1)
 
-    all_results = []
+    # --- Load MGEs (Opsional, kalau tidak ada kita anggap kosong) ---
+    mob_contigs, _ = load_mobsuite(mob_file) if os.path.exists(mob_file) else (set(), None)
+    integron_contigs, _ = load_integronfinder(integron_file) if os.path.exists(integron_file) else (set(), None)
+    is_contigs, _ = load_isescan(is_file) if os.path.exists(is_file) else (set(), None)
 
-    for rgi_file in sorted(rgi_files):
-        sample_id = os.path.basename(rgi_file).replace("_rgi.txt", "")
-        print(f"\n  [SAMPLE] {sample_id}")
+    # --- Anotasi tiap gen AMR ---
+    rgi_df["On_Plasmid"]  = rgi_df["contig_clean"].isin(mob_contigs)
+    rgi_df["On_Integron"] = rgi_df["contig_clean"].isin(integron_contigs)
+    rgi_df["On_IS"]       = rgi_df["contig_clean"].isin(is_contigs)
+    rgi_df["MGE_Type"]    = rgi_df.apply(determine_mge_type, axis=1)
 
-        # --- Metadata ---
-        meta = map_dict.get(sample_id, {})
-        country      = meta.get("country", "Unknown")
-        country_name = meta.get("country_name", "Unknown")
-        region       = meta.get("region", "Unknown")
+    # --- Tambah metadata ---
+    rgi_df["Sample_ID"]    = sample_id
+    rgi_df["Country"]      = country
+    rgi_df["Country_Name"] = country_name
+    rgi_df["Region"]       = region
 
-        # --- Load semua tools ---
-        rgi_df = load_rgi(rgi_file)
-        if rgi_df.empty:
-            print(f"    [SKIP] RGI kosong, melewati sampel ini.")
-            continue
+    # Kolom yang akan disimpan
+    keep_cols = [
+        "Sample_ID", "Country", "Country_Name", "Region",
+        "Contig", "contig_clean", "Best_Hit_ARO",
+        "Drug Class", "Resistance Mechanism", "AMR Gene Family",
+        "Best_Identities", "On_Plasmid", "On_Integron", "On_IS", "MGE_Type"
+    ]
+    available = [c for c in keep_cols if c in rgi_df.columns]
+    final_df = rgi_df[available]
 
-        mob_contigs, mob_meta = load_mobsuite(
-            f"results/mobsuite/{sample_id}_plasmid.txt"
-        )
-        integron_contigs, _ = load_integronfinder(
-            f"results/integron/{sample_id}_integrons.tsv"
-        )
-        is_contigs, _ = load_isescan(
-            f"results/isescan/{sample_id}_is.tsv"
-        )
-
-        print(f"    AMR genes    : {len(rgi_df)}")
-        print(f"    Plasmid ctg  : {len(mob_contigs)}")
-        print(f"    Integron ctg : {len(integron_contigs)}")
-        print(f"    IS/Tn ctg    : {len(is_contigs)}")
-
-        # --- Anotasi tiap gen AMR ---
-        rgi_df["On_Plasmid"]  = rgi_df["contig_clean"].isin(mob_contigs)
-        rgi_df["On_Integron"] = rgi_df["contig_clean"].isin(integron_contigs)
-        rgi_df["On_IS"]       = rgi_df["contig_clean"].isin(is_contigs)
-        rgi_df["MGE_Type"]    = rgi_df.apply(determine_mge_type, axis=1)
-
-        # --- Tambah metadata populasi ---
-        rgi_df["Sample_ID"]    = sample_id
-        rgi_df["Country"]      = country
-        rgi_df["Country_Name"] = country_name
-        rgi_df["Region"]       = region
-
-        # Kolom yang akan disimpan (subset dari output RGI)
-        keep_cols = [
-            "Sample_ID", "Country", "Country_Name", "Region",
-            "Contig", "contig_clean", "Best_Hit_ARO",
-            "Drug Class", "Resistance Mechanism", "AMR Gene Family",
-            "Best_Identities", "On_Plasmid", "On_Integron", "On_IS", "MGE_Type"
-        ]
-        # Ambil kolom yang tersedia saja (nama kolom RGI bisa berbeda antar versi)
-        available = [c for c in keep_cols if c in rgi_df.columns]
-        all_results.append(rgi_df[available])
-
-        mobile_count = rgi_df["On_Plasmid"].sum() + rgi_df["On_Integron"].sum() + rgi_df["On_IS"].sum()
-        print(f"    -> {mobile_count}/{len(rgi_df)} gen AMR terkait MGE")
-
-    # --- Gabung dan simpan ---
-    if all_results:
-        final_df = pd.concat(all_results, ignore_index=True)
-        os.makedirs(os.path.dirname(args.out), exist_ok=True)
-        final_df.to_csv(args.out, index=False)
-        print(f"\n  [DONE] Colocalization summary tersimpan: {args.out}")
-        print(f"         Total baris: {len(final_df)}")
-        print(f"         Total sampel: {final_df['Sample_ID'].nunique()}")
-    else:
-        print("\n  [WARN] Tidak ada sampel yang berhasil diproses.")
-        pd.DataFrame().to_csv(args.out, index=False)
+    # --- Simpan ---
+    os.makedirs(os.path.dirname(args.out), exist_ok=True)
+    final_df.to_csv(args.out, index=False)
+    print(f"  [DONE] Colocalization saved: {args.out} ({len(final_df)} genes)")
 
 
 if __name__ == "__main__":
