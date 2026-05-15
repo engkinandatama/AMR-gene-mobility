@@ -163,11 +163,24 @@ rule host_removal:
         runtime = 120
     shell:
         """
-        bowtie2 -p {threads} -x "{params.index_base}" -1 "{input.r1}" -2 "{input.r2}" \
+        # Cek ukuran file R2 (jika < 100 byte, berarti dummy/empty)
+        r2_size=$(stat -c%s "{input.r2}")
+        
+        if [ "$r2_size" -lt 100 ]; then
+            echo "[Host Removal] Sampel {wildcards.sample} terdeteksi Single-End (SE). Menggunakan mode -U." | tee "{log}"
+            bowtie2 -p {threads} -x "databases/hg38/hg38" -U "{input.r1}" \
+                --un-gz "{output.r1}" \
+                --very-sensitive > /dev/null 2>"{output.stats}"
+            # Buat dummy R2 non-host agar rule berikutnya tidak error
+            touch "dummy_r2.fastq"
+            pigz -c "dummy_r2.fastq" > "{output.r2}"
+            rm "dummy_r2.fastq"
+        else
+            echo "[Host Removal] Sampel {wildcards.sample} terdeteksi Paired-End (PE). Menggunakan mode -1 -2." | tee "{log}"
+            bowtie2 -p {threads} -x "databases/hg38/hg38" -1 "{input.r1}" -2 "{input.r2}" \
                 --un-conc-gz "{OUT}/data/nonhost_reads/{wildcards.sample}_%.fastq.gz" \
                 --very-sensitive > /dev/null 2>"{output.stats}"
-        mv "{OUT}/data/nonhost_reads/{wildcards.sample}_1.fastq.gz" "{output.r1}"
-        mv "{OUT}/data/nonhost_reads/{wildcards.sample}_2.fastq.gz" "{output.r2}"
+        fi
         """
 
 rule assembly_megahit:
