@@ -238,7 +238,7 @@ rule assembly_megahit:
         f"{OUT}/logs/assembly/{{sample}}.log"
     conda:
         "envs/megahit.yaml"
-    threads: 16
+    threads: 8
     resources:
         mem_mb=64000,
         partition="medium-small",
@@ -246,13 +246,18 @@ rule assembly_megahit:
     shell:
         """
         mkdir -p "{OUT}/logs/assembly"
+        mkdir -p "{OUT}/tmp/assembly"
         rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
+        
+        # Debugging: Cek apakah megahit terdeteksi
+        echo "Checking megahit..." > "{output.m_log}"
+        which megahit >> "{output.m_log}" 2>&1
+        megahit --version >> "{output.m_log}" 2>&1
         
         megahit -1 "{input.r1}" -2 "{input.r2}" \
                 -o "{OUT}/tmp/assembly/{wildcards.sample}" \
                 --out-prefix "{wildcards.sample}" \
-                --mem-flag 2 \
-                -t {threads} > "{output.m_log}" 2>&1
+                -t {threads} >> "{output.m_log}" 2>&1
         
         if [ -f "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" ]; then
             mv "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}"
@@ -280,6 +285,7 @@ rule run_rgi:
         runtime = 180
     shell:
         """
+        mkdir -p "{OUT}/logs/rgi" "{OUT}/analysis/rgi"
         rgi main --input_sequence "{input.fasta}" --output_file "{OUT}/analysis/rgi/{wildcards.sample}" \
                  --input_type contig --clean --num_threads {threads} >> "{log}" 2>&1
         mv "{OUT}/analysis/rgi/{wildcards.sample}.txt" "{output.rgi}"
@@ -323,6 +329,7 @@ rule run_integronfinder:
         runtime = 60
     shell:
         """
+        mkdir -p "{OUT}/logs/integron" "{OUT}/tmp/integron"
         integron_finder "{input.fasta}" --outdir "{OUT}/tmp/integron/{wildcards.sample}" --cpu {threads} --local-max >> "{log}" 2>&1
         find "{OUT}/tmp/integron/{wildcards.sample}" -name "*.integrons" | xargs cat > "{output.tsv}" 2>>"{log}" || touch "{output.tsv}"
         """
@@ -344,6 +351,7 @@ rule run_isescan:
         runtime = 60
     shell:
         """
+        mkdir -p "{OUT}/logs/isescan" "{OUT}/tmp/isescan"
         isescan.py --seqfile "{input.fasta}" --output "{OUT}/tmp/isescan/{wildcards.sample}" --nthread {threads} >> "{log}" 2>&1
         find "{OUT}/tmp/isescan/{wildcards.sample}" -name "*.tsv" | head -1 | xargs -I_F_ cp _F_ "{output.tsv}" 2>>"{log}" || touch "{output.tsv}"
         """
