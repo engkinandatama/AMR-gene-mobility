@@ -260,7 +260,7 @@ rule assembly_megahit:
                 -t {threads} >> "{output.m_log}" 2>&1
         
         if [ -f "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" ]; then
-            mv "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}"
+            python3 scripts/filter_contigs.py "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}" 1000
             rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
         else
             echo "[ERROR] Megahit failed! Check {output.m_log} for details."
@@ -326,7 +326,7 @@ rule run_integronfinder:
     resources:
         mem_mb = 8000,
         partition = "short",
-        runtime = 60
+        runtime = 240
     shell:
         """
         mkdir -p "{OUT}/logs/integron" "{OUT}/tmp/integron"
@@ -348,7 +348,7 @@ rule run_isescan:
     resources:
         mem_mb = 8000,
         partition = "short",
-        runtime = 60
+        runtime = 240
     shell:
         """
         mkdir -p "{OUT}/logs/isescan" "{OUT}/tmp/isescan"
