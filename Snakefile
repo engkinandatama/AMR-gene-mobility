@@ -351,9 +351,9 @@ rule run_isescan:
         f"{OUT}/logs/isescan/{{sample}}.log"
     threads: config["resources"].get("threads_isescan", 8)
     resources:
-        mem_mb = 8000,
-        partition = "short",
-        runtime = 240
+        mem_mb = 32000,
+        partition = "medium-small",
+        runtime = 720
     shell:
         """
         mkdir -p "{OUT}/logs/isescan" "{OUT}/tmp/isescan"
