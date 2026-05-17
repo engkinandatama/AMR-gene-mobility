@@ -199,7 +199,7 @@ rule host_removal:
         "envs/bowtie2.yaml"
     log:
         f"{OUT}/logs/host_removal/{{sample}}.log"
-    threads: 8
+    threads: config["resources"].get("threads_bowtie", 8)
     resources:
         mem_mb = 16000,
         partition = "medium-small",
@@ -238,7 +238,9 @@ rule assembly_megahit:
         f"{OUT}/logs/assembly/{{sample}}.log"
     conda:
         "envs/megahit.yaml"
-    threads: 8
+    threads: config["resources"].get("threads_megahit", 16)
+    params:
+        min_contig_len = config["megahit"]["min_contig_len"]
     resources:
         mem_mb=64000,
         partition="medium-small",
@@ -260,7 +262,7 @@ rule assembly_megahit:
                 -t {threads} >> "{output.m_log}" 2>&1
         
         if [ -f "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" ]; then
-            python3 scripts/filter_contigs.py "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}" 1000
+            python3 scripts/filter_contigs.py "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}" {params.min_contig_len}
             rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
         else
             echo "[ERROR] Megahit failed! Check {output.m_log} for details."
@@ -278,7 +280,10 @@ rule run_rgi:
         "envs/rgi.yaml"
     log:
         f"{OUT}/logs/rgi/{{sample}}.log"
-    threads: 8
+    threads: config["resources"].get("threads_rgi", 8)
+    params:
+        alignment_tool = config["rgi"]["alignment_tool"],
+        input_type = config["rgi"]["input_type"]
     resources:
         mem_mb = 16000,
         partition = "short",
@@ -287,7 +292,7 @@ rule run_rgi:
         """
         mkdir -p "{OUT}/logs/rgi" "{OUT}/analysis/rgi"
         rgi main --input_sequence "{input.fasta}" --output_file "{OUT}/analysis/rgi/{wildcards.sample}" \
-                 --input_type contig --clean --num_threads {threads} >> "{log}" 2>&1
+                 --input_type {params.input_type} --alignment_tool {params.alignment_tool} --clean --num_threads {threads} >> "{log}" 2>&1
         mv "{OUT}/analysis/rgi/{wildcards.sample}.txt" "{output.rgi}"
         """
 
@@ -301,7 +306,7 @@ rule run_mobsuite:
         "envs/mobsuite.yaml"
     log:
         f"{OUT}/logs/mobsuite/{{sample}}.log"
-    threads: 8
+    threads: config["resources"].get("threads_mobsuite", 8)
     resources:
         mem_mb = 8000,
         partition = "short",
@@ -322,7 +327,7 @@ rule run_integronfinder:
         "envs/integronfinder.yaml"
     log:
         f"{OUT}/logs/integron/{{sample}}.log"
-    threads: 4
+    threads: config["resources"].get("threads_integron", 4)
     resources:
         mem_mb = 8000,
         partition = "short",
@@ -344,7 +349,7 @@ rule run_isescan:
         "envs/isescan.yaml"
     log:
         f"{OUT}/logs/isescan/{{sample}}.log"
-    threads: 4
+    threads: config["resources"].get("threads_isescan", 8)
     resources:
         mem_mb = 8000,
         partition = "short",
@@ -381,23 +386,23 @@ rule aggregate_by_population:
     input:
         csvs = expand(f"{OUT}/analysis/colocalization/{{sample}}_coloc.csv", sample=SAMPLES)
     output:
-        csv = f"{OUT}/analysis/aggregated/{{population}}_combined.csv"
+        csv = f"{OUT}/analysis/aggregated/{{population}}_combined.csv",
+        coloc = f"{OUT}/analysis/aggregated/{{population}}_all_coloc.csv",
+        abundance = f"{OUT}/analysis/aggregated/{{population}}_amr_abundance.csv",
+        mge = f"{OUT}/analysis/aggregated/{{population}}_mge_distribution.csv"
     conda:
         "envs/r_stats.yaml"
     log:
         f"{OUT}/logs/aggregate_{{population}}.log"
     shell:
         """
-        # Gabung semua file CSV colocalization menjadi satu file sementara
-        tmp_summary="{OUT}/tmp/{{population}}_all_coloc.csv"
-        mkdir -p "{OUT}/tmp"
-        head -n 1 {input.csvs[0]} > "$tmp_summary"
-        for f in {input.csvs}; do tail -n +2 "$f" >> "$tmp_summary"; done
+        mkdir -p "{OUT}/analysis/aggregated"
+        # Gabung semua file CSV colocalization menjadi satu file formal
+        head -n 1 {input.csvs[0]} > "{output.coloc}"
+        for f in {input.csvs}; do tail -n +2 "$f" >> "{output.coloc}"; done
         
-        python scripts/03_aggregate_by_population.py --input "$tmp_summary" \
+        python scripts/03_aggregate_by_population.py --input "{output.coloc}" \
             --output-dir "{OUT}/analysis/aggregated" --pop "{wildcards.population}" 2>&1 | tee -a "{log}"
-        
-        rm "$tmp_summary"
         """
 
 rule run_statistics:
@@ -410,9 +415,19 @@ rule run_statistics:
         "envs/r_stats.yaml"
     log:
         f"{OUT}/logs/stats_{{population}}.log"
+    params:
+        p_adjust = config["stats"]["p_adjust_method"],
+        alpha = config["stats"]["alpha"],
+        permutations = config["stats"]["permanova_permutations"]
     shell:
         """
-        Rscript scripts/04_run_stats.R --input "{input.aggregated}" --output_dir "{OUT}/analysis/statistics/{wildcards.population}" 2>&1 | tee -a "{log}"
+        Rscript scripts/04_run_stats.R \
+            --input "{input.aggregated}" \
+            --output_dir "{OUT}/analysis/statistics/{wildcards.population}" \
+            --pop "{wildcards.population}" \
+            --p_adjust_method "{params.p_adjust}" \
+            --alpha {params.alpha} \
+            --permanova_permutations {params.permutations} 2>&1 | tee -a "{log}"
         """
 
 rule network_analysis:
@@ -425,9 +440,17 @@ rule network_analysis:
         "envs/r_stats.yaml"
     log:
         f"{OUT}/logs/network_{{population}}.log"
+    params:
+        min_cooccurrence = config["network"]["min_cooccurrence"],
+        layout = config["network"]["layout"]
     shell:
         """
-        Rscript scripts/05_network_analysis.R --input "{input.aggregated}" --output_dir "{OUT}/analysis/networks/{wildcards.population}" 2>&1 | tee -a "{log}"
+        Rscript scripts/05_network_analysis.R \
+            --input "{input.aggregated}" \
+            --output_dir "{OUT}/analysis/networks/{wildcards.population}" \
+            --pop "{wildcards.population}" \
+            --min_cooccurrence {params.min_cooccurrence} \
+            --layout "{params.layout}" 2>&1 | tee -a "{log}"
         touch "{output.flag}"
         """
 

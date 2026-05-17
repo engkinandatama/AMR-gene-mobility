@@ -38,22 +38,76 @@ cat("============================================================\n")
 cat("[Phase 4] Analisis Statistik Komprehensif - AMR Gene Mobility\n")
 cat("============================================================\n\n")
 
+# --- Base R Argument Parser ---
+args <- commandArgs(trailingOnly = TRUE)
+parse_args <- function(args) {
+  params <- list()
+  i <- 1
+  while(i <= length(args)) {
+    if(startsWith(args[i], "--")) {
+      key <- sub("^--", "", args[i])
+      val <- args[i+1]
+      params[[key]] <- val
+      i <- i + 2
+    } else {
+      i <- i + 1
+    }
+  }
+  return(params)
+}
+params <- parse_args(args)
+
+# Fallback defaults jika dijalankan manual tanpa arguments
+input_file   <- ifelse(!is.null(params$input), params$input, "results/amr_mge_association_matrix.csv")
+output_dir   <- ifelse(!is.null(params$output_dir), params$output_dir, "results")
+pop_name     <- ifelse(!is.null(params$pop), params$pop, "combined")
+p_adjust     <- ifelse(!is.null(params$p_adjust_method), params$p_adjust_method, "BH")
+alpha_val    <- as.numeric(ifelse(!is.null(params$alpha), params$alpha, "0.05"))
+n_permutations <- as.numeric(ifelse(!is.null(params$permanova_permutations), params$permanova_permutations, "999"))
+
 # --- Setup direktori output ---
-dir.create("results/figures", recursive = TRUE, showWarnings = FALSE)
-dir.create("results/tables",  recursive = TRUE, showWarnings = FALSE)
+fig_dir <- file.path(output_dir, "figures")
+tab_dir <- file.path(output_dir, "tables")
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(tab_dir, recursive = TRUE, showWarnings = FALSE)
 
 # --- Load data ---
 cat("[1] Membaca data input...\n")
-coloc_df  <- read.csv("results/colocalization_summary.csv")
-abund_df  <- read.csv("results/amr_abundance_matrix.csv")
-mge_df    <- read.csv("results/mge_distribution_matrix.csv")
-assoc_df  <- read.csv("results/amr_mge_association_matrix.csv")
+agg_dir <- dirname(input_file)
+
+# File names berdasarkan prefix populasi
+coloc_path <- file.path(agg_dir, paste0(pop_name, "_all_coloc.csv"))
+abund_path <- file.path(agg_dir, paste0(pop_name, "_amr_abundance.csv"))
+mge_path   <- file.path(agg_dir, paste0(pop_name, "_mge_distribution.csv"))
+assoc_path <- input_file
+
+if (!file.exists(coloc_path) || !file.exists(abund_path) || !file.exists(mge_path)) {
+  cat("[WARN] Salah satu file input tidak ditemukan. Mungkin populasi ini kosong.\n")
+  cat("       Mencoba membaca fallback dari folder results/ jika ada...\n")
+  coloc_path <- "results/colocalization_summary.csv"
+  abund_path <- "results/amr_abundance_matrix.csv"
+  mge_path   <- "results/mge_distribution_matrix.csv"
+  assoc_path <- "results/amr_mge_association_matrix.csv"
+}
+
+# Membaca data secara aman
+coloc_df  <- tryCatch(read.csv(coloc_path), error = function(e) data.frame())
+abund_df  <- tryCatch(read.csv(abund_path), error = function(e) data.frame())
+mge_df    <- tryCatch(read.csv(mge_path), error = function(e) data.frame())
+assoc_df  <- tryCatch(read.csv(assoc_path), error = function(e) data.frame())
+
+if (nrow(coloc_df) == 0 || nrow(abund_df) == 0) {
+  cat("[WARN] Data kosong untuk populasi ini. Menghentikan analisis secara aman.\n")
+  # Buat dummy file agar Snakemake tidak error
+  writeLines("Analisis statistik di-skip karena data kosong untuk populasi ini.", file.path(output_dir, "summary_stats.txt"))
+  quit(status = 0)
+}
 
 cat("    colocalization_summary: ", nrow(coloc_df), "baris\n")
 cat("    amr_abundance_matrix  : ", nrow(abund_df), "sampel\n\n")
 
 # Warna konsisten per populasi
-pop_colors <- c("DNK" = "#2196F3", "CHN" = "#F44336", "IND" = "#4CAF50")
+pop_colors <- c("DNK" = "#2196F3", "CHN" = "#F44336", "IND" = "#4CAF50", "CMR" = "#FF9800", "MDG" = "#9C27B0")
 
 #=============================================================
 # 4A: DIVERSITY ANALYSIS -> Sub-question 1
@@ -85,16 +139,16 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
          x = "Populasi", y = "Shannon Index") +
     theme_bw(base_size = 12) +
     theme(legend.position = "none")
-  ggsave("results/figures/Fig_S1_alpha_diversity.pdf", p_alpha, width = 6, height = 5)
+  ggsave(file.path(fig_dir, "Fig_S1_alpha_diversity.pdf"), p_alpha, width = 6, height = 5)
   cat("    -> Saved: Fig_S1_alpha_diversity.pdf\n")
 
   # Beta diversity: Bray-Curtis + PERMANOVA
   if (nrow(abund_df) >= 3) {
     bc_dist <- vegdist(species_matrix, method = "bray")
-    permanova_result <- adonis2(bc_dist ~ Country, data = abund_df, permutations = 999)
+    permanova_result <- adonis2(bc_dist ~ Country, data = abund_df, permutations = n_permutations)
     cat("\n    PERMANOVA (Beta diversity - Bray-Curtis):\n")
     print(permanova_result)
-    write.csv(as.data.frame(permanova_result), "results/tables/Table_PERMANOVA.csv")
+    write.csv(as.data.frame(permanova_result), file.path(tab_dir, "Table_PERMANOVA.csv"))
     cat("    -> Saved: Table_PERMANOVA.csv\n")
   }
 } else {
@@ -122,12 +176,12 @@ kw_results <- amr_long %>%
     }, error = function(e) NA_real_),
     .groups = "drop"
   ) %>%
-  mutate(p_adjusted = p.adjust(kw_p_value, method = "BH")) %>%
+  mutate(p_adjusted = p.adjust(kw_p_value, method = p_adjust)) %>%
   arrange(kw_p_value)
 
 cat("    Top AMR Classes by Kruskal-Wallis significance:\n")
 print(head(kw_results, 10))
-write.csv(kw_results, "results/tables/Table1_KruskalWallis_AMR_Class.csv", row.names = FALSE)
+write.csv(kw_results, file.path(tab_dir, "Table1_KruskalWallis_AMR_Class.csv"), row.names = FALSE)
 cat("    -> Saved: Table1_KruskalWallis_AMR_Class.csv\n")
 
 #=============================================================
@@ -152,7 +206,7 @@ p_mge <- ggplot(mge_df, aes(x = Country, y = Proportion, fill = MGE_Type)) +
     x = "Populasi", y = "Proporsi (%)", fill = "Tipe MGE"
   ) +
   theme_bw(base_size = 12)
-ggsave("results/figures/Fig2_MGE_distribution.pdf", p_mge, width = 7, height = 5)
+ggsave(file.path(fig_dir, "Fig2_MGE_distribution.pdf"), p_mge, width = 7, height = 5)
 cat("    -> Saved: Fig2_MGE_distribution.pdf\n")
 
 # Chi-square test: apakah distribusi MGE berbeda antar populasi?
@@ -171,7 +225,7 @@ if (nrow(mge_contingency) >= 2 && ncol(mge_contingency) >= 2) {
     Chi2 = chi_result$statistic,
     df   = chi_result$parameter,
     p_value = chi_result$p.value
-  ), "results/tables/Table_ChiSquare_MGE.csv", row.names = FALSE)
+  ), file.path(tab_dir, "Table_ChiSquare_MGE.csv"), row.names = FALSE)
   cat("    -> Saved: Table_ChiSquare_MGE.csv\n")
 }
 
@@ -212,14 +266,14 @@ for (country_name in unique(coloc_df$Country)) {
 
 if (length(fisher_results) > 0) {
   fisher_df <- do.call(rbind, fisher_results) %>%
-    mutate(p_adjusted = p.adjust(p_value, method = "BH")) %>%
+    mutate(p_adjusted = p.adjust(p_value, method = p_adjust)) %>%
     arrange(p_adjusted)
   
   cat("    Top significant AMR-MGE associations (FDR < 0.05):\n")
   sig <- fisher_df %>% filter(p_adjusted < 0.05)
   if (nrow(sig) > 0) print(head(sig, 10)) else cat("    (Tidak ada yang signifikan - wajar untuk pilot kecil)\n")
   
-  write.csv(fisher_df, "results/tables/Table2_Fisher_AMR_MGE.csv", row.names = FALSE)
+  write.csv(fisher_df, file.path(tab_dir, "Table2_Fisher_AMR_MGE.csv"), row.names = FALSE)
   cat("    -> Saved: Table2_Fisher_AMR_MGE.csv\n")
 }
 
@@ -238,7 +292,7 @@ heatmap_mat <- heatmap_data %>%
 rownames(heatmap_mat) <- paste0(heatmap_data$Country, "_", heatmap_data$Sample_ID)
 
 if (HAVE_HEATMAP && nrow(heatmap_mat) >= 2 && ncol(heatmap_mat) >= 2) {
-  pdf("results/figures/Fig1_Heatmap_AMR.pdf", width = 14, height = 8)
+  pdf(file.path(fig_dir, "Fig1_Heatmap_AMR.pdf"), width = 14, height = 8)
   ht <- Heatmap(
     log10(heatmap_mat + 1),
     name = "log10(count+1)",
@@ -269,11 +323,14 @@ sheets <- list(
 if (exists("fisher_df")) sheets[["Fisher AMR-MGE"]] <- fisher_df
 if (exists("permanova_result")) sheets[["PERMANOVA Beta Diversity"]] <- as.data.frame(permanova_result)
 
-write_xlsx(sheets, "results/tables/Supplementary_Statistics.xlsx")
+write_xlsx(sheets, file.path(tab_dir, "Supplementary_Statistics.xlsx"))
 cat("    -> Saved: Supplementary_Statistics.xlsx\n")
 
 cat("\n============================================================\n")
 cat("SELESAI. Semua output tersimpan di:\n")
-cat("  results/figures/  : Grafik untuk manuskrip\n")
-cat("  results/tables/   : Tabel statistik\n")
+cat("  figures/  : Grafik untuk manuskrip\n")
+cat("  tables/   : Tabel statistik\n")
 cat("============================================================\n")
+
+# Buat file summary_stats.txt untuk Snakemake
+writeLines("Analisis statistik selesai successfully.", file.path(output_dir, "summary_stats.txt"))

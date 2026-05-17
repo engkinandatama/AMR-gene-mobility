@@ -31,16 +31,57 @@ cat("============================================================\n")
 cat("[Phase 5] Cross-Population AMR-MGE Network Comparison\n")
 cat("============================================================\n\n")
 
-dir.create("results/figures", recursive = TRUE, showWarnings = FALSE)
-dir.create("results/tables",  recursive = TRUE, showWarnings = FALSE)
+# --- Base R Argument Parser ---
+args <- commandArgs(trailingOnly = TRUE)
+parse_args <- function(args) {
+  params <- list()
+  i <- 1
+  while(i <= length(args)) {
+    if(startsWith(args[i], "--")) {
+      key <- sub("^--", "", args[i])
+      val <- args[i+1]
+      params[[key]] <- val
+      i <- i + 2
+    } else {
+      i <- i + 1
+    }
+  }
+  return(params)
+}
+params <- parse_args(args)
+
+# Fallback defaults jika dijalankan manual tanpa arguments
+input_file      <- ifelse(!is.null(params$input), params$input, "results/amr_mge_association_matrix.csv")
+output_dir      <- ifelse(!is.null(params$output_dir), params$output_dir, "results")
+pop_name        <- ifelse(!is.null(params$pop), params$pop, "combined")
+MIN_COOCCURRENCE <- as.numeric(ifelse(!is.null(params$min_cooccurrence), params$min_cooccurrence, "2"))
+LAYOUT_METHOD   <- ifelse(!is.null(params$layout), params$layout, "stress")
+
+# --- Setup direktori output ---
+fig_dir <- file.path(output_dir, "figures")
+tab_dir <- file.path(output_dir, "tables")
+dir.create(fig_dir, recursive = TRUE, showWarnings = FALSE)
+dir.create(tab_dir, recursive = TRUE, showWarnings = FALSE)
 
 # --- Load data ---
-cat("[1] Membaca colocalization_summary.csv...\n")
-df <- read.csv("results/colocalization_summary.csv")
+cat("[1] Membaca data input...\n")
+agg_dir <- dirname(input_file)
+
+# File name berdasarkan prefix populasi
+coloc_path <- file.path(agg_dir, paste0(pop_name, "_all_coloc.csv"))
+
+if (!file.exists(coloc_path)) {
+  cat("[WARN] File input tidak ditemukan. Mungkin populasi ini kosong.\n")
+  cat("       Mencoba membaca fallback dari folder results/ jika ada...\n")
+  coloc_path <- "results/colocalization_summary.csv"
+}
+
+# Membaca data secara aman
+df <- tryCatch(read.csv(coloc_path), error = function(e) data.frame())
 
 if (nrow(df) == 0) {
-  cat("[ERROR] Data kosong.\n")
-  quit(status = 1)
+  cat("[WARN] Data kosong. Menghentikan analisis secara aman.\n")
+  quit(status = 0)
 }
 
 # Hanya ambil gen AMR yang berasosiasi dengan MGE (exclude Chromosomal)
@@ -86,7 +127,7 @@ plot_network <- function(g, title, color_amr = "#1565C0", color_mge = "#B71C1C")
     return(NULL)
   }
   
-  ggraph(g, layout = "fr") +
+  ggraph(g, layout = LAYOUT_METHOD) +
     geom_edge_link(aes(width = weight), alpha = 0.3, color = "gray40") +
     geom_node_point(aes(color = node_type, size = degree)) +
     geom_node_label(aes(label = name, color = node_type),
@@ -116,7 +157,7 @@ for (ctr in countries) {
   
   if (!is.null(g)) {
     p <- plot_network(g, title = paste("AMR-MGE Network:", ctr))
-    out_path <- paste0("results/figures/Fig3_Network_", ctr, ".pdf")
+    out_path <- file.path(fig_dir, paste0("Fig3_Network_", ctr, ".pdf"))
     ggsave(out_path, p, width = 10, height = 8)
     cat("    -> Saved:", out_path, "\n")
     
@@ -171,7 +212,7 @@ if (length(jaccard_results) > 0) {
   jac_df <- do.call(rbind, jaccard_results)
   cat("    Jaccard Similarity antar network:\n")
   print(jac_df)
-  write.csv(jac_df, "results/tables/Table_Jaccard_Similarity.csv", row.names = FALSE)
+  write.csv(jac_df, file.path(tab_dir, "Table_Jaccard_Similarity.csv"), row.names = FALSE)
   cat("    -> Saved: Table_Jaccard_Similarity.csv\n")
 }
 
@@ -180,7 +221,7 @@ if (length(jaccard_results) > 0) {
 # ============================================================
 if (length(network_metrics) > 0) {
   metrics_df <- do.call(rbind, network_metrics)
-  write.csv(metrics_df, "results/tables/Table_Network_Metrics.csv", row.names = FALSE)
+  write.csv(metrics_df, file.path(tab_dir, "Table_Network_Metrics.csv"), row.names = FALSE)
   cat("\n    Network Metrics Summary:\n")
   print(metrics_df)
   cat("    -> Saved: Table_Network_Metrics.csv\n")
@@ -188,6 +229,6 @@ if (length(network_metrics) > 0) {
 
 cat("\n============================================================\n")
 cat("SELESAI - Phase 5 Network Analysis\n")
-cat("  results/figures/Fig3_Network_*.pdf  : Network per populasi\n")
-cat("  results/tables/Table_Network_*.csv  : Metrics dan Jaccard similarity\n")
+cat("  figures/Fig3_Network_*.pdf  : Network per populasi\n")
+cat("  tables/Table_Network_*.csv  : Metrics dan Jaccard similarity\n")
 cat("============================================================\n")

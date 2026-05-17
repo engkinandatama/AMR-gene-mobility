@@ -45,6 +45,13 @@ def main():
         print("[ERROR] File input kosong.", file=sys.stderr)
         sys.exit(1)
 
+    # Filter data berdasarkan Region/Populasi jika bukan "combined" atau "all"
+    if args.pop.lower() not in ["combined", "all"]:
+        print(f"    [INFO] Memfilter data untuk populasi (Region): {args.pop}")
+        df = df[df["Region"] == args.pop]
+        if df.empty:
+            print(f"    [WARN] Tidak ada data sampel yang ditemukan untuk Region '{args.pop}'.")
+
     # -------------------------------------------------------
     # OUTPUT 1: AMR Abundance Matrix
     # -------------------------------------------------------
