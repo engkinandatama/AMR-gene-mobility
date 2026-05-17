@@ -199,7 +199,7 @@ rule host_removal:
         "envs/bowtie2.yaml"
     log:
         f"{OUT}/logs/host_removal/{{sample}}.log"
-    threads: 8
+    threads: config["resources"].get("threads_bowtie", 8)
     resources:
         mem_mb = 16000,
         partition = "medium-small",
@@ -238,7 +238,9 @@ rule assembly_megahit:
         f"{OUT}/logs/assembly/{{sample}}.log"
     conda:
         "envs/megahit.yaml"
-    threads: 8
+    threads: config["resources"].get("threads_megahit", 16)
+    params:
+        min_contig_len = config["megahit"]["min_contig_len"]
     resources:
         mem_mb=64000,
         partition="medium-small",
@@ -260,7 +262,7 @@ rule assembly_megahit:
                 -t {threads} >> "{output.m_log}" 2>&1
         
         if [ -f "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" ]; then
-            python3 scripts/filter_contigs.py "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}" 1000
+            python3 scripts/filter_contigs.py "{OUT}/tmp/assembly/{wildcards.sample}/{wildcards.sample}.contigs.fa" "{output.fa}" {params.min_contig_len}
             rm -rf "{OUT}/tmp/assembly/{wildcards.sample}"
         else
             echo "[ERROR] Megahit failed! Check {output.m_log} for details."
@@ -278,7 +280,10 @@ rule run_rgi:
         "envs/rgi.yaml"
     log:
         f"{OUT}/logs/rgi/{{sample}}.log"
-    threads: 8
+    threads: config["resources"].get("threads_rgi", 8)
+    params:
+        alignment_tool = config["rgi"]["alignment_tool"],
+        input_type = config["rgi"]["input_type"]
     resources:
         mem_mb = 16000,
         partition = "short",
@@ -287,7 +292,7 @@ rule run_rgi:
         """
         mkdir -p "{OUT}/logs/rgi" "{OUT}/analysis/rgi"
         rgi main --input_sequence "{input.fasta}" --output_file "{OUT}/analysis/rgi/{wildcards.sample}" \
-                 --input_type contig --clean --num_threads {threads} >> "{log}" 2>&1
+                 --input_type {params.input_type} --alignment_tool {params.alignment_tool} --clean --num_threads {threads} >> "{log}" 2>&1
         mv "{OUT}/analysis/rgi/{wildcards.sample}.txt" "{output.rgi}"
         """
 
@@ -301,7 +306,7 @@ rule run_mobsuite:
         "envs/mobsuite.yaml"
     log:
         f"{OUT}/logs/mobsuite/{{sample}}.log"
-    threads: 8
+    threads: config["resources"].get("threads_mobsuite", 8)
     resources:
         mem_mb = 8000,
         partition = "short",
@@ -322,7 +327,7 @@ rule run_integronfinder:
         "envs/integronfinder.yaml"
     log:
         f"{OUT}/logs/integron/{{sample}}.log"
-    threads: 4
+    threads: config["resources"].get("threads_integron", 4)
     resources:
         mem_mb = 8000,
         partition = "short",
@@ -344,7 +349,7 @@ rule run_isescan:
         "envs/isescan.yaml"
     log:
         f"{OUT}/logs/isescan/{{sample}}.log"
-    threads: 4
+    threads: config["resources"].get("threads_isescan", 8)
     resources:
         mem_mb = 8000,
         partition = "short",
