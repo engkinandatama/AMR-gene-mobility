@@ -357,7 +357,8 @@ rule run_isescan:
     shell:
         """
         mkdir -p "{OUT}/logs/isescan" "{OUT}/tmp/isescan"
-        isescan.py --seqfile "{input.fasta}" --output "{OUT}/tmp/isescan/{wildcards.sample}" --nthread {threads} >> "{log}" 2>&1
+        cut -d' ' -f1 "{input.fasta}" > "{OUT}/tmp/isescan/{wildcards.sample}_clean.fa"
+        isescan.py --seqfile "{OUT}/tmp/isescan/{wildcards.sample}_clean.fa" --output "{OUT}/tmp/isescan/{wildcards.sample}" --nthread {threads} >> "{log}" 2>&1
         find "{OUT}/tmp/isescan/{wildcards.sample}" -name "*.tsv" | head -1 | xargs -I_F_ cp _F_ "{output.tsv}" 2>>"{log}"
         [ -f "{output.tsv}" ] || touch "{output.tsv}"
         """

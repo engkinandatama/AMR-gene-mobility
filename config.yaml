@@ -47,7 +47,7 @@ resources:
   threads_rgi: 8
   threads_mobsuite: 8
   threads_integron: 4
-  threads_isescan: 1
+  threads_isescan: 8
   threads_stats: 2
   max_memory_mb: 32000
 
