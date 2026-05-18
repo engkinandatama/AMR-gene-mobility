@@ -358,7 +358,8 @@ rule run_isescan:
         """
         mkdir -p "{OUT}/logs/isescan" "{OUT}/tmp/isescan"
         isescan.py --seqfile "{input.fasta}" --output "{OUT}/tmp/isescan/{wildcards.sample}" --nthread {threads} >> "{log}" 2>&1
-        find "{OUT}/tmp/isescan/{wildcards.sample}" -name "*.tsv" | head -1 | xargs -I_F_ cp _F_ "{output.tsv}" 2>>"{log}" || touch "{output.tsv}"
+        find "{OUT}/tmp/isescan/{wildcards.sample}" -name "*.tsv" | head -1 | xargs -I_F_ cp _F_ "{output.tsv}" 2>>"{log}"
+        [ -f "{output.tsv}" ] || touch "{output.tsv}"
         """
 
 rule colocalization:
