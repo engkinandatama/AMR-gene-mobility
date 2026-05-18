@@ -371,7 +371,7 @@ rule colocalization:
     output:
         csv = f"{OUT}/analysis/colocalization/{{sample}}_coloc.csv"
     conda:
-        "envs/r_stats.yaml"
+        "envs/python.yaml"
     log:
         f"{OUT}/logs/colocalization/{{sample}}.log"
     shell:
@@ -391,7 +391,7 @@ rule aggregate_by_population:
         abundance = f"{OUT}/analysis/aggregated/{{population}}_amr_abundance.csv",
         mge = f"{OUT}/analysis/aggregated/{{population}}_mge_distribution.csv"
     conda:
-        "envs/r_stats.yaml"
+        "envs/python.yaml"
     log:
         f"{OUT}/logs/aggregate_{{population}}.log"
     shell:
