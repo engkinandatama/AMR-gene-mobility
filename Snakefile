@@ -30,6 +30,9 @@ else:
     # Fallback ke config countries jika kolom tidak ditemukan
     POPULATIONS = list(set(config.get("sample_selection", {}).get("countries", {}).values()))
 
+# Selalu tambahkan 'combined' untuk analisis statistik & heatmap keseluruhan negara
+POPULATIONS.append("combined")
+
 rule all:
     input:
         expand(f"{OUT}/analysis/statistics/{{population}}/summary_stats.txt", population=POPULATIONS),

@@ -106,8 +106,17 @@ if (nrow(coloc_df) == 0 || nrow(abund_df) == 0) {
 cat("    colocalization_summary: ", nrow(coloc_df), "baris\n")
 cat("    amr_abundance_matrix  : ", nrow(abund_df), "sampel\n\n")
 
-# Warna konsisten per populasi
-pop_colors <- c("DNK" = "#2196F3", "CHN" = "#F44336", "IND" = "#4CAF50", "CMR" = "#FF9800", "MDG" = "#9C27B0")
+# Warna konsisten per populasi (mendukung negara baru secara dinamis)
+base_colors <- c("DNK" = "#2196F3", "CHN" = "#F44336", "IND" = "#4CAF50", "CMR" = "#FF9800", "MDG" = "#9C27B0")
+unique_countries <- unique(c(abund_df$Country, coloc_df$Country))
+pop_colors <- base_colors
+missing_countries <- setdiff(unique_countries, names(pop_colors))
+if (length(missing_countries) > 0) {
+  # Gunakan RColorBrewer untuk warna tambahan jika ada negara baru
+  extra_colors <- colorRampPalette(suppressWarnings(brewer.pal(8, "Set2")))(length(missing_countries))
+  names(extra_colors) <- missing_countries
+  pop_colors <- c(pop_colors, extra_colors)
+}
 
 #=============================================================
 # 4A: DIVERSITY ANALYSIS -> Sub-question 1
