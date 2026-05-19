@@ -298,7 +298,16 @@ heatmap_data <- coloc_df %>%
 heatmap_mat <- heatmap_data %>%
   select(-Sample_ID, -Country) %>%
   as.matrix()
-rownames(heatmap_mat) <- paste0(heatmap_data$Country, "_", heatmap_data$Sample_ID)
+# Hindari duplikasi awalan Country_ jika Sample_ID sudah memilikinya
+rownames(heatmap_mat) <- sapply(1:nrow(heatmap_data), function(i) {
+  sid <- heatmap_data$Sample_ID[i]
+  ctr <- heatmap_data$Country[i]
+  if (startsWith(sid, paste0(ctr, "_"))) {
+    return(sid)
+  } else {
+    return(paste0(ctr, "_", sid))
+  }
+})
 
 if (HAVE_HEATMAP && nrow(heatmap_mat) >= 2 && ncol(heatmap_mat) >= 2) {
   pdf(file.path(fig_dir, "Fig1_Heatmap_AMR.pdf"), width = 14, height = 8)
