@@ -117,8 +117,8 @@ rule compress_sra:
     benchmark:
         f"{OUT}/benchmarks/compress_{{sample}}.tsv"
     output:
-        r1 = f"{OUT}/data/raw_reads/{{sample}}_1.fastq.gz",
-        r2 = f"{OUT}/data/raw_reads/{{sample}}_2.fastq.gz"
+        r1 = temp(f"{OUT}/data/raw_reads/{{sample}}_1.fastq.gz"),
+        r2 = temp(f"{OUT}/data/raw_reads/{{sample}}_2.fastq.gz")
     conda:
         "envs/sra-tools.yaml"
     threads: 4
@@ -138,8 +138,8 @@ rule qc_fastp:
         r1 = f"{OUT}/data/raw_reads/{{sample}}_1.fastq.gz",
         r2 = f"{OUT}/data/raw_reads/{{sample}}_2.fastq.gz"
     output:
-        qc1 = f"{OUT}/data/qc_reads/{{sample}}_1.fastq.gz",
-        qc2 = f"{OUT}/data/qc_reads/{{sample}}_2.fastq.gz",
+        qc1 = temp(f"{OUT}/data/qc_reads/{{sample}}_1.fastq.gz"),
+        qc2 = temp(f"{OUT}/data/qc_reads/{{sample}}_2.fastq.gz"),
         html = f"{OUT}/logs/qc/{{sample}}.html",
         json = f"{OUT}/logs/qc/{{sample}}.json"
     benchmark:
@@ -207,8 +207,8 @@ rule host_removal:
         r2 = f"{OUT}/data/qc_reads/{{sample}}_2.fastq.gz",
         index = "databases/hg38/hg38.1.bt2"
     output:
-        r1 = f"{OUT}/data/nonhost_reads/{{sample}}_1.fastq.gz",
-        r2 = f"{OUT}/data/nonhost_reads/{{sample}}_2.fastq.gz",
+        r1 = temp(f"{OUT}/data/nonhost_reads/{{sample}}_1.fastq.gz"),
+        r2 = temp(f"{OUT}/data/nonhost_reads/{{sample}}_2.fastq.gz"),
         stats = f"{OUT}/logs/host_removal/{{sample}}.stats"
     benchmark:
         f"{OUT}/benchmarks/host_removal_{{sample}}.tsv"
