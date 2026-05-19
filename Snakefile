@@ -20,12 +20,20 @@ localrules: all, download_sra, cleanup_intermediates, download_hg38_fasta
 # --- METADATA LOADING ---
 # Support dua cara: --config sample_map=... atau dari config.yaml
 _sample_map = config.get("sample_map", config.get("paths", {}).get("sample_map", "data/metadata/pilot_map.csv"))
-SAMPLES = pd.read_csv(_sample_map)["sample_id"].unique()
+df_map = pd.read_csv(_sample_map)
+SAMPLES = df_map["sample_id"].unique()
+
+region_col = "Region" if "Region" in df_map.columns else ("region" if "region" in df_map.columns else None)
+if region_col:
+    POPULATIONS = list(df_map[region_col].dropna().unique())
+else:
+    # Fallback ke config countries jika kolom tidak ditemukan
+    POPULATIONS = list(set(config.get("sample_selection", {}).get("countries", {}).values()))
 
 rule all:
     input:
-        expand(f"{OUT}/analysis/statistics/{{population}}/summary_stats.txt", population=["East_Asia", "Europe"]),
-        expand(f"{OUT}/analysis/networks/{{population}}/network_done.flag", population=["East_Asia", "Europe"])
+        expand(f"{OUT}/analysis/statistics/{{population}}/summary_stats.txt", population=POPULATIONS),
+        expand(f"{OUT}/analysis/networks/{{population}}/network_done.flag", population=POPULATIONS)
 
 # PHASE 1: SRA Download & HG38 Index
 rule download_sra:
@@ -33,6 +41,8 @@ rule download_sra:
     output:
         r1 = temp(f"{OUT}/data/raw_reads/{{sample}}_1.fastq"),
         r2 = temp(f"{OUT}/data/raw_reads/{{sample}}_2.fastq")
+    benchmark:
+        f"{OUT}/benchmarks/download_{{sample}}.tsv"
     params:
         accession = lambda wildcards: pd.read_csv(config["sample_map"]).set_index("sample_id").loc[wildcards.sample, "accession"]
     conda:
@@ -101,6 +111,8 @@ rule compress_sra:
     input:
         r1 = f"{OUT}/data/raw_reads/{{sample}}_1.fastq",
         r2 = f"{OUT}/data/raw_reads/{{sample}}_2.fastq"
+    benchmark:
+        f"{OUT}/benchmarks/compress_{{sample}}.tsv"
     output:
         r1 = f"{OUT}/data/raw_reads/{{sample}}_1.fastq.gz",
         r2 = f"{OUT}/data/raw_reads/{{sample}}_2.fastq.gz"
@@ -127,6 +139,8 @@ rule qc_fastp:
         qc2 = f"{OUT}/data/qc_reads/{{sample}}_2.fastq.gz",
         html = f"{OUT}/logs/qc/{{sample}}.html",
         json = f"{OUT}/logs/qc/{{sample}}.json"
+    benchmark:
+        f"{OUT}/benchmarks/qc_{{sample}}.tsv"
     conda:
         "envs/fastp.yaml"
     log:
@@ -193,6 +207,8 @@ rule host_removal:
         r1 = f"{OUT}/data/nonhost_reads/{{sample}}_1.fastq.gz",
         r2 = f"{OUT}/data/nonhost_reads/{{sample}}_2.fastq.gz",
         stats = f"{OUT}/logs/host_removal/{{sample}}.stats"
+    benchmark:
+        f"{OUT}/benchmarks/host_removal_{{sample}}.tsv"
     params:
         index_base = "databases/hg38/hg38"
     conda:
@@ -234,6 +250,8 @@ rule assembly_megahit:
     output:
         fa = f"{OUT}/data/contigs/{{sample}}.fa",
         m_log = f"{OUT}/logs/assembly/{{sample}}.megahit.log"
+    benchmark:
+        f"{OUT}/benchmarks/assembly_{{sample}}.tsv"
     log:
         f"{OUT}/logs/assembly/{{sample}}.log"
     conda:
@@ -276,6 +294,8 @@ rule run_rgi:
         fasta = f"{OUT}/data/contigs/{{sample}}.fa"
     output:
         rgi = f"{OUT}/analysis/rgi/{{sample}}.tsv"
+    benchmark:
+        f"{OUT}/benchmarks/rgi_{{sample}}.tsv"
     conda:
         "envs/rgi.yaml"
     log:
@@ -302,6 +322,8 @@ rule run_mobsuite:
         fasta = f"{OUT}/data/contigs/{{sample}}.fa"
     output:
         report = f"{OUT}/analysis/mobsuite/{{sample}}/contig_report.txt"
+    benchmark:
+        f"{OUT}/benchmarks/mobsuite_{{sample}}.tsv"
     conda:
         "envs/mobsuite.yaml"
     log:
@@ -323,6 +345,8 @@ rule run_integronfinder:
         fasta = f"{OUT}/data/contigs/{{sample}}.fa"
     output:
         tsv = f"{OUT}/analysis/integron/{{sample}}.tsv"
+    benchmark:
+        f"{OUT}/benchmarks/integron_{{sample}}.tsv"
     conda:
         "envs/integronfinder.yaml"
     log:
@@ -345,6 +369,8 @@ rule run_isescan:
         fasta = f"{OUT}/data/contigs/{{sample}}.fa"
     output:
         tsv = f"{OUT}/analysis/isescan/{{sample}}.tsv"
+    benchmark:
+        f"{OUT}/benchmarks/isescan_{{sample}}.tsv"
     conda:
         "envs/isescan.yaml"
     log:
@@ -372,6 +398,8 @@ rule colocalization:
         is_elements = f"{OUT}/analysis/isescan/{{sample}}.tsv"
     output:
         csv = f"{OUT}/analysis/colocalization/{{sample}}_coloc.csv"
+    benchmark:
+        f"{OUT}/benchmarks/coloc_{{sample}}.tsv"
     conda:
         "envs/python.yaml"
     log:
@@ -392,6 +420,8 @@ rule aggregate_by_population:
         coloc = f"{OUT}/analysis/aggregated/{{population}}_all_coloc.csv",
         abundance = f"{OUT}/analysis/aggregated/{{population}}_amr_abundance.csv",
         mge = f"{OUT}/analysis/aggregated/{{population}}_mge_distribution.csv"
+    benchmark:
+        f"{OUT}/benchmarks/aggregate_{{population}}.tsv"
     conda:
         "envs/python.yaml"
     log:
@@ -413,6 +443,8 @@ rule run_statistics:
         aggregated = f"{OUT}/analysis/aggregated/{{population}}_combined.csv"
     output:
         stats = f"{OUT}/analysis/statistics/{{population}}/summary_stats.txt"
+    benchmark:
+        f"{OUT}/benchmarks/stats_{{population}}.tsv"
     conda:
         "envs/r_stats.yaml"
     log:
@@ -438,6 +470,8 @@ rule network_analysis:
         aggregated = f"{OUT}/analysis/aggregated/{{population}}_combined.csv"
     output:
         flag = f"{OUT}/analysis/networks/{{population}}/network_done.flag"
+    benchmark:
+        f"{OUT}/benchmarks/network_{{population}}.tsv"
     conda:
         "envs/r_stats.yaml"
     log:

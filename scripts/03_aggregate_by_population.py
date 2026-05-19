@@ -51,6 +51,9 @@ def main():
         df = df[df["Region"] == args.pop]
         if df.empty:
             print(f"    [WARN] Tidak ada data sampel yang ditemukan untuk Region '{args.pop}'.")
+        else:
+            # Overwrite the concatenated _all_coloc.csv with the filtered version
+            df.to_csv(f"{output_dir}/{args.pop}_all_coloc.csv", index=False)
 
     # -------------------------------------------------------
     # OUTPUT 1: AMR Abundance Matrix
