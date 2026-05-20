@@ -337,8 +337,9 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
             if (nrow(mobile_counts) > 0) {
               mobile_pivot <- mobile_counts %>%
                 pivot_wider(names_from = `Drug.Class`, values_from = Count, values_fill = 0)
-              mobile_abund <- all_samples %>% left_join(mobile_pivot, by = "Sample_ID")
-              mobile_abund[is.na(mobile_abund)] <- 0
+              mobile_abund <- all_samples %>% 
+                left_join(mobile_pivot, by = "Sample_ID") %>%
+                mutate(across(-c(Sample_ID, Country), ~ replace_na(.x, 0)))
             } else {
               mobile_abund <- all_samples
             }
@@ -351,8 +352,9 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
             if (nrow(nonmobile_counts) > 0) {
               nonmobile_pivot <- nonmobile_counts %>%
                 pivot_wider(names_from = `Drug.Class`, values_from = Count, values_fill = 0)
-              nonmobile_abund <- all_samples %>% left_join(nonmobile_pivot, by = "Sample_ID")
-              nonmobile_abund[is.na(nonmobile_abund)] <- 0
+              nonmobile_abund <- all_samples %>% 
+                left_join(nonmobile_pivot, by = "Sample_ID") %>%
+                mutate(across(-c(Sample_ID, Country), ~ replace_na(.x, 0)))
             } else {
               nonmobile_abund <- all_samples
             }
