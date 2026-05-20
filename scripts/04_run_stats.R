@@ -278,6 +278,90 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
         }
       }
     }
+
+    # --- Mantel Test & Procrustes: Correlation between AMR and Taxonomy ---
+    tax_file <- "data/metadata/taxonomy_abundance.csv"
+    if (file.exists(tax_file)) {
+      cat("\n    [INFO] Membaca data taksonomi komunitas (MetaPhlAn) untuk analisis Mantel...\n")
+      tax_df <- tryCatch(read.csv(tax_file, check.names = FALSE), error = function(e) data.frame())
+      if (nrow(tax_df) > 0) {
+        # Filter tax_df untuk mencocokkan Sample_ID yang ada di abund_df saat ini
+        common_samples <- intersect(abund_df$Sample_ID, tax_df$Sample_ID)
+        if (length(common_samples) >= 3) {
+          # Subset dan urutkan kedua data frame agar urutan sampel sama persis
+          amr_sub <- abund_df %>% filter(Sample_ID %in% common_samples) %>% arrange(Sample_ID)
+          tax_sub <- tax_df %>% filter(Sample_ID %in% common_samples) %>% arrange(Sample_ID)
+          
+          # Ekstrak matriks numerik
+          amr_mat_sub <- amr_sub[, num_cols, drop = FALSE]
+          tax_mat_sub <- tax_sub[, setdiff(colnames(tax_sub), "Sample_ID"), drop = FALSE]
+          
+          # Hitung matriks jarak Bray-Curtis
+          amr_bc_sub <- vegdist(amr_mat_sub, method = "bray")
+          tax_bc_sub <- vegdist(tax_mat_sub, method = "bray")
+          
+          # Jalankan Mantel Test
+          cat("    Menjalankan Mantel Test (AMR vs Profil Taksonomi Species)...\n")
+          mantel_res <- tryCatch({
+            mantel(amr_bc_sub, tax_bc_sub, method = "spearman", permutations = n_permutations)
+          }, error = function(e) {
+            cat("    [WARN] Mantel test failed:", e$message, "\n")
+            NULL
+          })
+          
+          if (!is.null(mantel_res)) {
+            print(mantel_res)
+            mantel_df <- data.frame(
+              Analysis = "Mantel Test (AMR vs Taxonomic Abundance)",
+              Correlation_r = mantel_res$statistic,
+              p_value = mantel_res$signif,
+              Permutations = mantel_res$permutations,
+              stringsAsFactors = FALSE
+            )
+            write.csv(mantel_df, file.path(tab_dir, "Table_Mantel_Taxonomy.csv"), row.names = FALSE)
+            cat("    -> Saved: Table_Mantel_Taxonomy.csv\n")
+            
+            # Procrustes Analysis
+            cat("\n    Menjalankan Procrustes Analysis...\n")
+            amr_pcoa <- cmdscale(amr_bc_sub, k = 2)
+            tax_pcoa <- cmdscale(tax_bc_sub, k = 2)
+            pro_res <- tryCatch({
+              procrustes(amr_pcoa, tax_pcoa, symmetric = TRUE)
+            }, error = function(e) {
+              cat("    [WARN] Procrustes failed:", e$message, "\n")
+              NULL
+            })
+            
+            if (!is.null(pro_res)) {
+              pro_test <- protest(amr_pcoa, tax_pcoa, permutations = n_permutations)
+              print(pro_test)
+              
+              procrustes_df <- data.frame(
+                Analysis = "Procrustes (AMR PCoA vs Taxonomy PCoA)",
+                Correlation_R = pro_test$t0,
+                p_value = pro_test$signif,
+                Permutations = pro_test$permutations,
+                stringsAsFactors = FALSE
+              )
+              write.csv(procrustes_df, file.path(tab_dir, "Table_Procrustes_Taxonomy.csv"), row.names = FALSE)
+              cat("    -> Saved: Table_Procrustes_Taxonomy.csv\n")
+              
+              # Plot Procrustes
+              pdf(file.path(fig_dir, "Fig_S3_procrustes_plot.pdf"), width = 6, height = 5)
+              plot(pro_res, main = "Procrustes Superimposition (AMR vs Taxonomy)", sub = paste("R =", round(pro_test$t0, 3), ", p =", pro_test$signif))
+              points(pro_res, display = "target", col = "red", pch = 16)
+              points(pro_res, display = "rotated", col = "blue", pch = 17)
+              dev.off()
+              cat("    -> Saved: Fig_S3_procrustes_plot.pdf\n")
+            }
+          }
+        } else {
+          cat("    [WARN] Jumlah sampel iris untuk Mantel terlalu sedikit (butuh >=3 sampel)\n")
+        }
+      }
+    } else {
+      cat("    [INFO] data/metadata/taxonomy_abundance.csv tidak ditemukan. Skip analisis Mantel.\n")
+    }
   }
 } else {
   cat("    [WARN] Data sampel terlalu sedikit untuk diversity analysis (butuh >=3 sampel)\n")
@@ -462,6 +546,8 @@ if (exists("permanova_result")) sheets[["PERMANOVA Beta Diversity"]] <- as.data.
 if (exists("multi_permanova") && !is.null(multi_permanova)) sheets[["Multi-Factor PERMANOVA"]] <- as.data.frame(multi_permanova)
 if (exists("permutest_disp") && !is.null(permutest_disp)) sheets[["PERMDISP Homogeneity"]] <- as.data.frame(permutest_disp$tab)
 if (exists("pairwise_df")) sheets[["Pairwise PERMANOVA"]] <- pairwise_df
+if (exists("mantel_df")) sheets[["Mantel Taxonomy Correlation"]] <- mantel_df
+if (exists("procrustes_df")) sheets[["Procrustes Taxonomy"]] <- procrustes_df
 
 write_xlsx(sheets, file.path(tab_dir, "Supplementary_Statistics.xlsx"))
 cat("    -> Saved: Supplementary_Statistics.xlsx\n")
