@@ -1,87 +1,81 @@
-# AMR Gene Mobility in Human Gut Metagenomes
+# AMR-MGE Co-localization Pipeline
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Snakemake](https://img.shields.io/badge/snakemake-≥7.0-brightgreen.svg)](https://snakemake.readthedocs.io)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
 
-> **A reproducible end-to-end bioinformatics pipeline for comparative analysis of AMR gene–mobile genetic element associations across human gut metagenomes from Europe, Asia, and Africa.**
+> **A reproducible end-to-end bioinformatics pipeline for comparative analysis of AMR gene–mobile genetic element associations across metagenomes from different study cohorts or geographic populations.**
 
 ---
 
 ## Overview
 
-This repository contains the full computational pipeline for the study:
+This repository provides a reproducible, end-to-end framework to analyze whether antimicrobial resistance (AMR) gene–mobile genetic element (MGE) associations and co-localization patterns differ across populations, treatment groups, or geographic regions. It resolves both the *what* (AMR gene diversity/abundance) and the *how* (mechanistic linkage via plasmids, integrons, and insertion sequences/transposons).
 
-**"Cross-Continental Patterns of AMR Gene-MGE Co-localization in Human Gut Metagenomes: A One Health Perspective"**
-
-This pipeline investigates whether AMR gene–MGE associations differ across populations with different antibiotic usage profiles (Denmark, China, India, Cameroon, Madagascar), addressing both the *what* (AMR gene diversity) and the *how* (mechanistic linkage via plasmids, integrons, and transposons).
-
-### Research Questions
-1. Do AMR gene diversity and abundance differ significantly across populations from Europe, Asia, and Africa?
-2. Which MGE types (plasmid, integron, insertion sequence/transposon) predominantly carry AMR genes in each population?
-3. Do AMR class–MGE type associations differ across populations, indicating distinct horizontal gene transfer (HGT) routes?
+### Research Questions Addressed
+This pipeline is designed to address key ecological and biological questions regarding resistome mobility, such as:
+1. Do AMR gene diversity and abundance differ significantly across different study cohorts or populations?
+2. Which MGE types (plasmid, integron, insertion sequence/transposon) predominantly carry AMR genes in each cohort?
+3. Do AMR class–MGE type co-localization patterns differ across cohorts, suggesting distinct horizontal gene transfer (HGT) routes?
 
 ---
 
 ## Pipeline Architecture
 
 ```
-END-TO-END PIPELINE (HPC BRIN)
-================================================================================
-
-INPUT: Accession IDs (SRR/ERR) from sample_map.csv
-         │
-         ▼ [Phase 1] Download Raw Reads
-    sra-tools (prefetch + fasterq-dump)
-         │
-         ▼ [Phase 2A] Quality Control
-    fastp (adapter trimming, quality filtering)
-         │
-         ▼ [Phase 2B] Host Depletion
-    Bowtie2 vs hg38 (remove human reads)
-         │
-         ▼ [Phase 2C] De Novo Assembly
-    MEGAHIT (metagenome assembler)
-         │
-         ▼ data/contigs/{sample}.fasta
-         │
-         ├──────────────────────────────────────┐
-         │                                      │
-         ▼ [Phase 3A] AMR Detection             ▼ [Phase 3B-D] MGE Profiling
-    RGI + CARD Database                  MOB-suite (Plasmid)
-                                         IntegronFinder (Integron)
-                                         ISEScan (IS elements)
-         │                                      │
-         └──────────────┬───────────────────────┘
-                        │
-                        ▼ [Phase 3E] Co-localization
-                  HGT Linkage Analysis
-                  (AMR gene → MGE type per contig)
-                        │
-                        ▼ [Phase 3F] Aggregation
-                  Matrices: AMR abundance, MGE distribution
-                        │
-                        ├──────────────────────┐
-                        │                      │
-                        ▼ [Phase 4]            ▼ [Phase 5]
-                  Statistics              Network Analysis
-                  Kruskal-Wallis          Bipartite Networks
-                  Fisher's Exact         Jaccard Similarity
-                  PERMANOVA              Hub Identification
-                        │                      │
-                        └──────────┬───────────┘
-                                   ▼
-                           OUTPUT: Publication-ready
-                           Tables, Figures, Networks
+                       INPUT: sample_map.csv
+                                 │
+ ┌───────────────────────────────┴───────────────────────────────┐
+ │  snakemake assembly                                           │
+ │  ==================                                           │
+ │  1. Download Raw Reads (sra-tools: prefetch + fasterq-dump)   │
+ │  2. Quality Control (fastp: adapter/quality filtering)        │
+ │  3. Host Depletion (Bowtie2 vs hg38: remove human reads)      │
+ │  4. Metagenome Assembly (MEGAHIT: contig generation)          │
+ └───────────────────────────────┬───────────────────────────────┘
+                                 ▼
+                     results/{run_id}/data/contigs/
+                                 │
+ ┌───────────────────────────────┴───────────────────────────────┐
+ │  snakemake annotation_aggregation                             │
+ │  ================================                             │
+ │  1. AMR Detection (RGI + CARD database)                       │
+ │  2. MGE Profiling:                                            │
+ │     - Plasmids (MOB-suite)                                    │
+ │     - Integrons (IntegronFinder)                              │
+ │     - Insertion Sequences & Transposons (ISEScan)             │
+ │  3. Co-localization Integration (02_find_colocalization.py)   │
+ │  4. Regional Matrix Aggregation (03_aggregate_by_population)  │
+ └───────────────────────────────┬───────────────────────────────┘
+                                 ▼
+                     results/{run_id}/analysis/aggregated/
+                                 │
+ ┌───────────────────────────────┴───────────────────────────────┐
+ │  snakemake statistics                                         │
+ │  ====================                                         │
+ │  Resistome comparisons, alpha/beta diversity,                 │
+ │  association significance (Fisher's exact, PERMANOVA, etc.)   │
+ └───────────────────────────────┬───────────────────────────────┘
+                                 ▼
+                     results/{run_id}/analysis/statistics/
+                                 │
+ ┌───────────────────────────────┴───────────────────────────────┐
+ │  snakemake networks                                           │
+ │  ==================                                           │
+ │  Bipartite AMR class – MGE type co-occurrence networks        │
+ │  and topology centrality analysis                             │
+ └───────────────────────────────┬───────────────────────────────┘
+                                 ▼
+                     results/{run_id}/analysis/networks/
 ```
 
 ### Hybrid Execution Mode
 
-The pipeline supports multiple input types:
+The pipeline supports multiple entry points:
 
-1. **End-to-end (Full Pipeline)**: Start from accession IDs → download → QC → assembly → analysis
-2. **Assembly-only (Phase 3+)**: Start from assembled contigs → AMR/MGE detection → analysis
-3. **Analysis-only (Phase 4-5)**: Run statistics and network analysis on existing results
+1. **End-to-End (From Raw Reads)**: Run the full workflow starting from NCBI SRA accession IDs to download, clean, assemble, annotate, and analyze the samples.
+2. **From Pre-assembled Contigs (Annotation & Analysis)**: If you already have assembled contigs, bypass read downloading and assembly, and start directly with AMR/MGE detection and aggregation.
+3. **Analysis-only**: Run statistics and network comparisons directly on pre-computed co-localization and abundance matrices.
 
 ---
 
@@ -90,7 +84,7 @@ The pipeline supports multiple input types:
 ```
 AMR-gene-mobility/
 ├── config.yaml                # ← Central config: threads, tool parameters
-├── Snakefile                  # ← Pipeline orchestrator (v4.0 - End-to-End)
+├── Snakefile                  # ← Pipeline orchestrator (v4.1 - End-to-End & Modular)
 ├── profiles/
 │   └── slurm/
 │       └── config.yaml        # SLURM profile for HPC BRIN
@@ -104,56 +98,73 @@ AMR-gene-mobility/
 ├── databases/
 │   └── hg38/                  # Human reference genome index (downloaded once)
 ├── envs/                      # Conda environment definitions
-│   ├── sra-tools.yaml         # NEW: SRA download
-│   ├── fastp.yaml             # NEW: Quality control
-│   ├── bowtie2.yaml           # NEW: Host removal
-│   ├── megahit.yaml           # NEW: Assembly
-│   ├── rgi.yaml
-│   ├── mobsuite.yaml
-│   ├── integronfinder.yaml
-│   ├── isescan.yaml
-│   ├── python.yaml
-│   └── r_stats.yaml
+│   ├── sra-tools.yaml         # SRA download
+│   ├── fastp.yaml             # Quality control
+│   ├── bowtie2.yaml           # Host removal
+│   ├── megahit.yaml           # Metagenome assembly
+│   ├── rgi.yaml               # AMR detection
+│   ├── mobsuite.yaml          # Plasmid detection
+│   ├── integronfinder.yaml    # Integron detection
+│   ├── isescan.yaml           # IS/Transposon detection
+│   ├── python.yaml            # Co-localization & aggregation
+│   └── r_stats.yaml           # Statistics & network analysis
 ├── scripts/
-│   ├── 01_fetch_metadata.R          # Phase 0: Sample selection from curatedMetagenomicData
-│   ├── 02_find_colocalization.py    # Phase 3: AMR-MGE integration
-│   ├── 03_aggregate_by_population.py # Phase 3: Summary matrices
-│   ├── 04_run_stats.R               # Phase 4: Statistics & visualization
-│   └── 05_network_analysis.R        # Phase 5: Network comparison
-├── results/                   # Generated outputs
-│   ├── rgi/
-│   ├── mobsuite/
-│   ├── integron/
-│   ├── isescan/
-│   ├── figures/
-│   └── tables/
-└── logs/                      # Per-rule log files
+│   ├── 01_fetch_metadata.R          # Metadata download & sample cohort filtering
+│   ├── 01b_fetch_taxonomy.R         # Taxonomy profiling of cohort samples
+│   ├── filter_contigs.py            # Contig filtering by minimum length
+│   ├── 02_find_colocalization.py    # AMR-MGE co-localization mapping
+│   ├── 03_aggregate_by_population.py # Abundance & co-localization matrix aggregation
+│   ├── 04_run_stats.R               # Statistical testing and resistome profiling
+│   ├── 05_network_analysis.R        # Bipartite network construction & topology metrics
+│   └── analyze_benchmarks.py        # Utility: Compile run duration & memory benchmarks
+└── results/                         # Generated outputs (grouped by run_id, e.g. pilot_run)
+    └── pilot_run/
+        ├── data/                    # Contigs
+        ├── analysis/                # Subdivided into rgi, mobsuite, integron, isescan, aggregated, statistics, networks
+        ├── logs/                    # Rule log files and SLURM logs
+        └── benchmarks/              # Job execution time and memory profiles
 ```
 
 ---
 
 ## Prerequisites
 
-### 1. Conda / Miniconda
+### 1. Package Manager (Conda / Miniconda)
 
-Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) if not already available.
+Install [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or [Miniforge](https://github.com/conda-forge/miniforge) if not already available.
 
-### 2. Snakemake
+### 2. Snakemake Installation
 
+To avoid package conflicts in your base environment, it is highly recommended to install Snakemake in a dedicated environment. You can use standard **Conda** or **Mamba** (if installed):
+
+#### Option A: Using Conda (Standard)
 ```bash
-conda install -n base -c conda-forge -c bioconda snakemake -y
+# Create a dedicated environment and install Snakemake
+conda create -c conda-forge -c bioconda -n snakemake snakemake -y
+
+# Activate the environment
+conda activate snakemake
 ```
 
-> All tools are **automatically installed** by Snakemake via `--use-conda`. No manual installation required.
+#### Option B: Using Mamba (Alternative)
+```bash
+# Create environment using mamba
+mamba create -c conda-forge -c bioconda -n snakemake snakemake -y
+
+# Activate the environment
+conda activate snakemake
+```
+
+> **Note**: All other software tools (R, Python, MEGAHIT, Bowtie2, RGI, MOB-suite, etc.) are **automatically downloaded and installed** inside isolated environments by Snakemake during the first run using the `--use-conda` flag. No manual setup is needed!
 
 ### 3. Hardware Requirements
 
 | Component | Minimum | Recommended (HPC) |
 |-----------|---------|-------------------|
-| RAM | 16 GB | 32-64 GB per job |
-| CPU | 4 cores | 8+ cores per job |
-| Storage | 100 GB | 3 TB (for 250 samples) |
-| Internet | Required | Required (for SRA download) |
+| RAM | 16 GB | 32-64 GB per parallel job |
+| CPU | 4 cores | 8+ cores per parallel job |
+| Storage | 100 GB | ~500 GB (for 250 samples, thanks to automatic intermediate file cleanup) |
+| Internet | Required | Required (for reference database & SRA download) |
 
 ---
 
@@ -180,9 +191,9 @@ Or manually create `data/metadata/sample_map.csv`:
 
 ```csv
 sample_id,country,country_name,region,accession
-DNK_ERR321618,DNK,Denmark,Europe,ERR321618
-CHN_SRR9108951,CHN,China,East_Asia,SRR9108951
-IND_ERR2017479,IND,India,South_Asia,ERR2017479
+sample_01,DNK,Denmark,Europe,ERR321618
+sample_02,CHN,China,East_Asia,SRR9108951
+sample_03,IND,India,South_Asia,ERR2017479
 ```
 
 ### Step 3 — Run the pipeline
@@ -191,50 +202,50 @@ IND_ERR2017479,IND,India,South_Asia,ERR2017479
 
 ```bash
 # Dry-run to validate
-snakemake all_full --dry-run --cores 4
+snakemake all --dry-run --cores 4
 
-# Run on HPC with SLURM
-snakemake all_full --profile profiles/slurm --use-conda
+# Run on HPC with SLURM (uses profiles/slurm/config.yaml configuration)
+snakemake all --profile profiles/slurm --use-conda
 
-# Or run locally (not recommended for large batches)
-snakemake all_full --cores all --use-conda
+# Or run locally (not recommended for large batches due to assembly load)
+snakemake all --cores all --use-conda
 ```
 
 #### Option B: From Assembled Contigs (Backward Compatible)
 
-Place your assembled `.fasta` files in `data/contigs/`:
+Place your assembled `.fa` or `.fasta` files in `results/{run_id}/data/contigs/` (or specify via `paths.contigs_dir` in `config.yaml`):
 
 ```
-data/contigs/
-├── DNK_ERR321618.fasta     # Denmark (Europe)
-├── CHN_SRR9108951.fasta    # China (East Asia)
-└── IND_ERR2017479.fasta    # India (South Asia)
+results/pilot_run/data/contigs/
+├── DNK_ERR321618.fa        # Denmark (Europe)
+├── CHN_SRR9108951.fa       # China (East Asia)
+└── IND_ERR2017479.fa       # India (South Asia)
 ```
 
-Then run:
+Then run the remaining annotation and analysis phases:
 
 ```bash
-# Phase 3 only (AMR + MGE detection)
-snakemake phase3 --cores all --use-conda
+# Run annotation and aggregation only
+snakemake annotation_aggregation --cores all --use-conda
 
-# Or run everything
+# Or run everything from annotation to final plots
 snakemake all --cores all --use-conda
 ```
 
-#### Option C: Phase-by-Phase
+#### Option C: Functional Component Execution
 
 ```bash
-# Phase 1-2: Download, QC, Assembly
-snakemake all_full --cores all --use-conda
+# Run Metagenome Assembly (Download, QC, and MEGAHIT)
+snakemake assembly --cores all --use-conda
 
-# Phase 3: AMR + MGE Detection
-snakemake phase3 --cores all --use-conda
+# Run AMR & MGE Detection, Co-localization, and Aggregation
+snakemake annotation_aggregation --cores all --use-conda
 
-# Phase 4: Statistics
-snakemake phase4 --cores 4 --use-conda
+# Run Statistical Analyses & Figures
+snakemake statistics --cores all --use-conda
 
-# Phase 5: Network Analysis
-snakemake phase5 --cores 4 --use-conda
+# Run Bipartite Network Construction & Centrality Comparison
+snakemake networks --cores all --use-conda
 ```
 
 ### Step 4 — Monitor progress
@@ -315,33 +326,41 @@ resources:
 
 ## Outputs
 
+All output files are organized per run in the `results/{run_id}/` directory (default: `results/pilot_run/`).
+
 ### Primary Output Files
 
 | File | Description |
 |------|-------------|
-| `data/contigs/{sample}.fasta` | Assembled contigs (permanent) |
-| `results/colocalization_summary.csv` | Per-gene AMR–MGE co-localization table |
-| `results/amr_abundance_matrix.csv` | AMR class abundance matrix per sample |
-| `results/mge_distribution_matrix.csv` | MGE type proportions per country |
-| `results/amr_mge_association_matrix.csv` | AMR class × MGE type cross-tabulation |
+| `results/{run_id}/data/contigs/{sample}.fa` | Assembled contigs filtered by length |
+| `results/{run_id}/analysis/aggregated/{population}_all_coloc.csv` | Full co-localization table for the population (contains AMR-MGE association positions) |
+| `results/{run_id}/analysis/aggregated/{population}_amr_abundance.csv` | AMR drug class abundance matrix per sample |
+| `results/{run_id}/analysis/aggregated/{population}_mge_distribution.csv` | Proportional distribution of MGE types (Plasmid, Integron, IS) per country |
+| `results/{run_id}/analysis/aggregated/{population}_combined.csv` | Cross-tabulated AMR class × MGE type × Country count matrix |
 
 ### Figures
 
-| File | Description |
-|------|-------------|
-| `results/figures/Fig1_Heatmap_AMR.pdf` | Heatmap: AMR abundance across samples |
-| `results/figures/Fig2_MGE_distribution.pdf` | Stacked bar: MGE distribution per population |
-| `results/figures/Fig3_Network_*.pdf` | Bipartite AMR–MGE network per population |
-
-### Statistical Tables
+Figures are generated under the respective population statistics and networks directories:
 
 | File | Description |
 |------|-------------|
-| `results/tables/Table1_KruskalWallis_AMR_Class.csv` | Kruskal-Wallis results (Sub-Q1) |
-| `results/tables/Table2_Fisher_AMR_MGE.csv` | Fisher's exact results (Sub-Q3) |
-| `results/tables/Table_PERMANOVA.csv` | PERMANOVA results |
-| `results/tables/Table_Network_Metrics.csv` | Network comparison metrics |
-| `results/tables/Supplementary_Statistics.xlsx` | All statistical outputs |
+| `results/{run_id}/analysis/statistics/{population}/figures/Fig1_Heatmap_AMR.pdf` | Heatmap of AMR drug class abundance across samples |
+| `results/{run_id}/analysis/statistics/{population}/figures/Fig2_MGE_distribution.pdf` | Stacked bar plot of MGE type distribution per country |
+| `results/{run_id}/analysis/statistics/{population}/figures/Fig_S1_alpha_diversity.pdf` | Boxplot comparing AMR gene richness across countries |
+| `results/{run_id}/analysis/statistics/{population}/figures/Fig_S2_permdisp_plot.pdf` | PERMDISP group dispersion visualization |
+| `results/{run_id}/analysis/statistics/{population}/figures/Fig_S3_procrustes_plot.pdf` | Procrustes overlay plot (Taxonomy vs. Resistome) |
+| `results/{run_id}/analysis/statistics/{population}/figures/Fig_S4_mobility_index.pdf` | Distribution of AMR Mobility Index per country |
+| `results/{run_id}/analysis/networks/{population}/figures/Fig3_Network_{country}.pdf` | Bipartite AMR class – MGE type co-occurrence network per country |
+
+### Statistical & Network Tables
+
+| File | Description |
+|------|-------------|
+| `results/{run_id}/analysis/statistics/{population}/tables/Table1_KruskalWallis_AMR_Class.csv` | Kruskal-Wallis and Dunn post-hoc test results comparing AMR class abundances (Sub-Q1) |
+| `results/{run_id}/analysis/statistics/{population}/tables/Table2_Fisher_AMR_MGE.csv` | Fisher's Exact test results for association significance (Sub-Q3) |
+| `results/{run_id}/analysis/statistics/{population}/tables/Table_PERMANOVA.csv` | PERMANOVA test comparing resistome composition across countries |
+| `results/{run_id}/analysis/statistics/{population}/tables/Table_Network_Metrics.csv` | Topology comparison metrics across countries (Sub-Q3) |
+| `results/{run_id}/analysis/statistics/{population}/tables/Supplementary_Statistics.xlsx` | Comprehensive multi-sheet workbook containing all tables and values |
 
 ### QC Reports
 
@@ -353,7 +372,7 @@ resources:
 
 ---
 
-## HPC BRIN Deployment
+## HPC Deployment (SLURM)
 
 ### Resource Estimates (250 Samples)
 
@@ -366,14 +385,9 @@ resources:
 
 ### SLURM Configuration
 
-The pipeline includes a pre-configured SLURM profile at `profiles/slurm/config.yaml`. 
+The pipeline includes a pre-configured SLURM profile template at `profiles/slurm/config.yaml`. 
 
-Before running, update the account name:
-
-```yaml
-__default__:
-  account: "your_project_code"  # Replace with your BRIN project code
-```
+Before running, adjust the settings to match your cluster's scheduler and partitions, and update the default resource configuration (e.g., default partition, memory limits, and billing account code if required by your HPC).
 
 ### Submit Jobs
 
@@ -384,8 +398,8 @@ module load miniconda3
 # Activate conda
 conda activate snakemake
 
-# Run pipeline
-snakemake all_full --profile profiles/slurm --use-conda --jobs 100
+# Run pipeline with SLURM scheduler integration
+snakemake all --profile profiles/slurm --use-conda --jobs 20
 ```
 
 ### Storage Management
@@ -405,9 +419,9 @@ snakemake cleanup_intermediates --cores 1
 
 ## Data Availability
 
-- Metagenomic metadata sourced from [`curatedMetagenomicData`](https://bioconductor.org/packages/curatedMetagenomicData/)
-- Raw sequencing data available from NCBI SRA under accession numbers listed in `data/metadata/sample_map.csv`
-- Target cohorts: Denmark (Europe), China (East Asia), India (South Asia), Cameroon (Sub-Saharan Africa), Madagascar (Sub-Saharan Africa)
+- Metagenomic metadata sourced from public databases (e.g., [`curatedMetagenomicData`](https://bioconductor.org/packages/curatedMetagenomicData/)) or user-provided datasets.
+- Raw sequencing data available from NCBI SRA under accession numbers defined in your metadata map.
+- Target cohorts: Supports arbitrary geographic populations, treatment groups, or study cohorts defined in your metadata map.
 
 ---
 
@@ -468,13 +482,21 @@ assembly_megahit:
 
 If you use this pipeline, please cite:
 
-> Nandatama, E. (2026). *AMR Gene Mobility in Human Gut Metagenomes: Cross-Population Comparative Pipeline*. GitHub. https://github.com/engkinandatama/AMR-gene-mobility
+> Nandatama, E. (2026). *AMR-MGE Co-localization Pipeline: Comparative analysis of resistome mobility in metagenomes*. GitHub. https://github.com/engkinandatama/AMR-gene-mobility
 
 ---
 
 ## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
+
+---
+
+## Acknowledgments
+
+We thank the **Badan Riset dan Inovasi Nasional (BRIN) HPC Team** for providing the computational services and resources (Mahameru HPC System) used to perform the metagenomic assembly and analysis in our study.
+
+We also thank the developers and maintainers of the **curatedMetagenomicData** Bioconductor package for providing the curated human gut metagenomic metadata and taxonomy profiles that served as the sample selection basis for this work.
 
 ---
 

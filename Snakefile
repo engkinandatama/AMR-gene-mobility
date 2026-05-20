@@ -38,6 +38,26 @@ rule all:
         expand(f"{OUT}/analysis/statistics/{{population}}/summary_stats.txt", population=POPULATIONS),
         expand(f"{OUT}/analysis/networks/{{population}}/network_done.flag", population=POPULATIONS)
 
+rule assembly:
+    """Run up to Metagenome Assembly (SRA Download, QC, Host Depletion, and MEGAHIT)"""
+    input:
+        expand(f"{OUT}/data/contigs/{{sample}}.fa", sample=SAMPLES)
+
+rule annotation_aggregation:
+    """Run AMR & MGE profiling, Co-localization, and regional Aggregation"""
+    input:
+        expand(f"{OUT}/analysis/aggregated/{{population}}_combined.csv", population=POPULATIONS)
+
+rule statistics:
+    """Run Statistical Analysis, diversity comparisons, and plots"""
+    input:
+        expand(f"{OUT}/analysis/statistics/{{population}}/summary_stats.txt", population=POPULATIONS)
+
+rule networks:
+    """Run Bipartite Network Construction and centrality metrics"""
+    input:
+        expand(f"{OUT}/analysis/networks/{{population}}/network_done.flag", population=POPULATIONS)
+
 # PHASE 1: SRA Download & HG38 Index
 rule download_sra:
     """Mengunduh data FASTQ dari NCBI SRA"""
