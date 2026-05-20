@@ -321,6 +321,91 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
             write.csv(mantel_df, file.path(tab_dir, "Table_Mantel_Taxonomy.csv"), row.names = FALSE)
             cat("    -> Saved: Table_Mantel_Taxonomy.csv\n")
             
+            # --- Dual-Mantel Test (Decoupling Analysis) ---
+            cat("    Menjalankan Dual-Mantel Test (Decoupling Analysis: Mobile vs Non-Mobile AMR vs Taxonomy)...\n")
+            
+            # List of all unique samples
+            all_samples <- coloc_df %>% 
+              select(Sample_ID, Country) %>% 
+              distinct()
+
+            # Mobile AMR Matrix (all samples included, missing filled with 0)
+            mobile_counts <- coloc_df %>%
+              filter(MGE_Type != "Chromosomal") %>%
+              count(Sample_ID, `Drug.Class`, name = "Count")
+
+            if (nrow(mobile_counts) > 0) {
+              mobile_pivot <- mobile_counts %>%
+                pivot_wider(names_from = `Drug.Class`, values_from = Count, values_fill = 0)
+              mobile_abund <- all_samples %>% left_join(mobile_pivot, by = "Sample_ID")
+              mobile_abund[is.na(mobile_abund)] <- 0
+            } else {
+              mobile_abund <- all_samples
+            }
+
+            # Non-Mobile AMR Matrix (all samples included, missing filled with 0)
+            nonmobile_counts <- coloc_df %>%
+              filter(MGE_Type == "Chromosomal") %>%
+              count(Sample_ID, `Drug.Class`, name = "Count")
+
+            if (nrow(nonmobile_counts) > 0) {
+              nonmobile_pivot <- nonmobile_counts %>%
+                pivot_wider(names_from = `Drug.Class`, values_from = Count, values_fill = 0)
+              nonmobile_abund <- all_samples %>% left_join(nonmobile_pivot, by = "Sample_ID")
+              nonmobile_abund[is.na(nonmobile_abund)] <- 0
+            } else {
+              nonmobile_abund <- all_samples
+            }
+
+            # Filter for common samples
+            mobile_sub <- mobile_abund %>% filter(Sample_ID %in% common_samples) %>% arrange(Sample_ID)
+            nonmobile_sub <- nonmobile_abund %>% filter(Sample_ID %in% common_samples) %>% arrange(Sample_ID)
+            
+            # Extract numeric matrices
+            mobile_mat_sub <- mobile_sub[, setdiff(colnames(mobile_sub), c("Sample_ID", "Country")), drop = FALSE]
+            nonmobile_mat_sub <- nonmobile_sub[, setdiff(colnames(nonmobile_sub), c("Sample_ID", "Country")), drop = FALSE]
+            
+            # Run Mantel for Non-Mobile AMR vs Taxonomy
+            nonmobile_bc <- vegdist(nonmobile_mat_sub, method = "bray")
+            mantel_nonmobile <- tryCatch({
+              mantel(nonmobile_bc, tax_bc_sub, method = "spearman", permutations = n_permutations)
+            }, error = function(e) {
+              cat("    [WARN] Non-mobile Mantel test failed:", e$message, "\n")
+              NULL
+            })
+            
+            # Run Mantel for Mobile AMR vs Taxonomy
+            mantel_mobile <- NULL
+            if (ncol(mobile_mat_sub) > 0 && sum(mobile_mat_sub) > 0) {
+              mobile_bc <- vegdist(mobile_mat_sub, method = "bray")
+              mantel_mobile <- tryCatch({
+                mantel(mobile_bc, tax_bc_sub, method = "spearman", permutations = n_permutations)
+              }, error = function(e) {
+                cat("    [WARN] Mobile Mantel test failed:", e$message, "\n")
+                NULL
+              })
+            }
+            
+            # Save results
+            dual_mantel_results <- data.frame(
+              Analysis = c("Non-Mobile AMR vs Taxonomy (Vertical)", "Mobile AMR vs Taxonomy (Horizontal/HGT)"),
+              Correlation_r = c(
+                ifelse(!is.null(mantel_nonmobile), mantel_nonmobile$statistic, NA),
+                ifelse(!is.null(mantel_mobile), mantel_mobile$statistic, NA)
+              ),
+              p_value = c(
+                ifelse(!is.null(mantel_nonmobile), mantel_nonmobile$signif, NA),
+                ifelse(!is.null(mantel_mobile), mantel_mobile$signif, NA)
+              ),
+              Permutations = c(
+                ifelse(!is.null(mantel_nonmobile), mantel_nonmobile$permutations, NA),
+                ifelse(!is.null(mantel_mobile), mantel_mobile$permutations, NA)
+              ),
+              stringsAsFactors = FALSE
+            )
+            write.csv(dual_mantel_results, file.path(tab_dir, "Table_Dual_Mantel_Decoupling.csv"), row.names = FALSE)
+            cat("    -> Saved: Table_Dual_Mantel_Decoupling.csv\n")
+            
             # Procrustes Analysis
             cat("\n    Menjalankan Procrustes Analysis...\n")
             amr_pcoa <- cmdscale(amr_bc_sub, k = 2)
@@ -490,6 +575,82 @@ if (length(fisher_results) > 0) {
 }
 
 #=============================================================
+# 4F: RESISTOME MOBILITY INDEX ANALYSIS (Enhancement for Novelty)
+#=============================================================
+cat("\n[4F] Resistome Mobility Index Analysis...\n")
+
+mobility_df <- coloc_df %>%
+  group_by(Sample_ID, Country) %>%
+  summarise(
+    Total_AMR = n(),
+    Mobile_AMR = sum(MGE_Type != "Chromosomal"),
+    Mobility_Index = ifelse(Total_AMR > 0, Mobile_AMR / Total_AMR, 0),
+    .groups = "drop"
+  )
+
+write.csv(mobility_df, file.path(tab_dir, "Table_Mobility_Index.csv"), row.names = FALSE)
+cat("    -> Saved: Table_Mobility_Index.csv\n")
+
+# Run Kruskal-Wallis test on Resistome Mobility Index across countries
+if (n_distinct(mobility_df$Country) >= 2 && nrow(mobility_df) >= 3) {
+  mobility_kw <- tryCatch({
+    kruskal.test(Mobility_Index ~ Country, data = mobility_df)
+  }, error = function(e) NULL)
+  
+  if (!is.null(mobility_kw)) {
+    cat("    Kruskal-Wallis test on Resistome Mobility Index:\n")
+    print(mobility_kw)
+    
+    # Save Kruskal-Wallis result
+    mobility_kw_df <- data.frame(
+      Metric = "Resistome Mobility Index",
+      Chi2 = mobility_kw$statistic,
+      df = mobility_kw$parameter,
+      p_value = mobility_kw$p.value,
+      stringsAsFactors = FALSE
+    )
+    write.csv(mobility_kw_df, file.path(tab_dir, "Table_Mobility_KruskalWallis.csv"), row.names = FALSE)
+    cat("    -> Saved: Table_Mobility_KruskalWallis.csv\n")
+    
+    # Post-hoc Dunn's Test if significant
+    if (mobility_kw$p.value < alpha_val) {
+      cat("    Running Post-hoc Dunn's Test on Mobility Index...\n")
+      dunn_res <- tryCatch({
+        dunn.test(mobility_df$Mobility_Index, mobility_df$Country, method = p_adjust)
+      }, error = function(e) NULL)
+      
+      if (!is.null(dunn_res)) {
+        dunn_df <- data.frame(
+          Comparison = dunn_res$comparisons,
+          Z = dunn_res$Z,
+          p_value = dunn_res$P,
+          p_adjusted = dunn_res$P.adj,
+          stringsAsFactors = FALSE
+        )
+        write.csv(dunn_df, file.path(tab_dir, "Table_Mobility_DunnPostHoc.csv"), row.names = FALSE)
+        cat("    -> Saved: Table_Mobility_DunnPostHoc.csv\n")
+      }
+    }
+  }
+}
+
+# Plot Mobility Index per Country
+p_mobility <- ggplot(mobility_df, aes(x = Country, y = Mobility_Index, fill = Country)) +
+  geom_boxplot(alpha = 0.7, outlier.shape = NA) +
+  geom_jitter(width = 0.1, size = 2) +
+  scale_fill_manual(values = pop_colors) +
+  labs(
+    title = "Resistome Mobility Index across Populations",
+    subtitle = "Mobility Index = Mobile AMR Genes / Total AMR Genes",
+    x = "Country", y = "Mobility Index"
+  ) +
+  theme_bw(base_size = 12) +
+  theme(legend.position = "none")
+
+ggsave(file.path(fig_dir, "Fig_S4_mobility_index.pdf"), p_mobility, width = 6, height = 5)
+cat("    -> Saved: Fig_S4_mobility_index.pdf\n")
+
+#=============================================================
 # 4E: HEATMAP UTAMA (Figure 1 Manuskrip)
 #=============================================================
 cat("\n[4E] Membuat Heatmap Utama (Figure 1)...\n")
@@ -548,6 +709,10 @@ if (exists("permutest_disp") && !is.null(permutest_disp)) sheets[["PERMDISP Homo
 if (exists("pairwise_df")) sheets[["Pairwise PERMANOVA"]] <- pairwise_df
 if (exists("mantel_df")) sheets[["Mantel Taxonomy Correlation"]] <- mantel_df
 if (exists("procrustes_df")) sheets[["Procrustes Taxonomy"]] <- procrustes_df
+if (exists("mobility_df")) sheets[["Mobility Index per Sample"]] <- mobility_df
+if (exists("mobility_kw_df")) sheets[["Mobility Kruskal-Wallis"]] <- mobility_kw_df
+if (exists("dunn_df")) sheets[["Mobility Dunn PostHoc"]] <- dunn_df
+if (exists("dual_mantel_results")) sheets[["Dual-Mantel Decoupling"]] <- dual_mantel_results
 
 write_xlsx(sheets, file.path(tab_dir, "Supplementary_Statistics.xlsx"))
 cat("    -> Saved: Supplementary_Statistics.xlsx\n")
