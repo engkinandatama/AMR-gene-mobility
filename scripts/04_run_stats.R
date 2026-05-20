@@ -23,6 +23,7 @@ suppressPackageStartupMessages({
   library(tibble)
   library(ggplot2)
   library(vegan)
+  library(dunn.test)
   library(RColorBrewer)
   library(writexl)
 })
@@ -613,21 +614,21 @@ if (n_distinct(mobility_df$Country) >= 2 && nrow(mobility_df) >= 3) {
     write.csv(mobility_kw_df, file.path(tab_dir, "Table_Mobility_KruskalWallis.csv"), row.names = FALSE)
     cat("    -> Saved: Table_Mobility_KruskalWallis.csv\n")
     
-    # Post-hoc pairwise Wilcoxon test if significant (built-in R, no package dependency)
+    # Post-hoc Dunn's Test if significant
     if (mobility_kw$p.value < alpha_val) {
-      cat("    Running Post-hoc Pairwise Wilcoxon Test on Mobility Index...\n")
-      wt <- tryCatch({
-        pairwise.wilcox.test(mobility_df$Mobility_Index, mobility_df$Country, p.adjust.method = p_adjust)
+      cat("    Running Post-hoc Dunn's Test on Mobility Index...\n")
+      dunn_res <- tryCatch({
+        dunn.test(mobility_df$Mobility_Index, mobility_df$Country, method = p_adjust)
       }, error = function(e) NULL)
       
-      if (!is.null(wt) && !is.null(wt$p.value)) {
-        p_mat <- wt$p.value
-        dunn_df <- as.data.frame(as.table(p_mat)) %>%
-          filter(!is.na(Freq)) %>%
-          rename(Pop1 = Var1, Pop2 = Var2, p_adjusted = Freq) %>%
-          mutate(Comparison = paste0(Pop1, " vs ", Pop2)) %>%
-          select(Comparison, p_adjusted)
-        
+      if (!is.null(dunn_res)) {
+        dunn_df <- data.frame(
+          Comparison = dunn_res$comparisons,
+          Z = dunn_res$Z,
+          p_value = dunn_res$P,
+          p_adjusted = dunn_res$P.adj,
+          stringsAsFactors = FALSE
+        )
         write.csv(dunn_df, file.path(tab_dir, "Table_Mobility_DunnPostHoc.csv"), row.names = FALSE)
         cat("    -> Saved: Table_Mobility_DunnPostHoc.csv\n")
       }
