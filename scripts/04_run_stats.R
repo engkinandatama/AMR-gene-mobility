@@ -194,8 +194,8 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
       cat("    -> Saved: Fig_S2_permdisp_plot.pdf\n")
     }
 
-    # Multi-factor PERMANOVA (controlling for covariates Age, Gender, Study)
-    factors_to_try <- c("Gender", "Age", "Study")
+    # Multi-factor PERMANOVA (controlling for covariates Age, Gender)
+    factors_to_try <- c("Gender", "Age")
     valid_factors <- c()
     for (f in factors_to_try) {
       if (f %in% colnames(abund_df)) {
