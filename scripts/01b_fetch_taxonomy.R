@@ -59,11 +59,15 @@ tax_df <- as.data.frame(t(species_mat)) %>%
 mapping_df <- full_samples %>%
   select(original_sample_id = sample_id, accession = NCBI_accession) %>%
   mutate(accession_clean = sub(";.*", "", accession)) %>%
+  filter(!is.na(accession_clean) & accession_clean != "") %>%
   left_join(
-    sample_map %>% select(sample_id, accession) %>% mutate(accession_clean = sub(";.*", "", accession)),
+    sample_map %>% 
+      select(sample_id, accession) %>% 
+      mutate(accession_clean = sub(";.*", "", accession)) %>%
+      filter(!is.na(accession_clean) & accession_clean != ""),
     by = "accession_clean"
   ) %>%
-  select(original_sample_id, final_sample_id = sample_id.y)
+  select(original_sample_id, final_sample_id = sample_id)
 
 # Gabungkan mapping ke tax_df
 final_tax_df <- mapping_df %>%
