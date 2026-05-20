@@ -500,6 +500,43 @@ We also thank the developers and maintainers of the **curatedMetagenomicData** B
 
 ---
 
+## References
+
+The primary publications for the tools and databases integrated into this pipeline:
+
+1. **Snakemake**  
+   Mölder, F., Jablonski, K. P., Letcher, B., Hall, M. B., Tomkins-Tinch, C. H., Sochat, V., Forster, J., Lee, S., Twardziok, S. O., Kanitz, A., Wilm, A., Holtgrewe, M., Rahmann, S., Nahnsen, S., & Köster, J. (2021). Sustainable data analysis with Snakemake. *F1000Research*, 10, 33. [https://doi.org/10.12688/f1000research.29032.3](https://doi.org/10.12688/f1000research.29032.3)
+
+2. **Sequence Read Archive (SRA) / sra-tools**  
+   Leinonen, R., Sugawara, H., Shumway, M., & International Nucleotide Sequence Database Collaboration. (2011). The Sequence Read Archive. *Nucleic Acids Research*, 39(suppl_1), D19–D21. [https://doi.org/10.1093/nar/gkq1019](https://doi.org/10.1093/nar/gkq1019)
+
+3. **fastp**  
+   Chen, S., Zhou, Y., Chen, Y., & Gu, J. (2018). fastp: an ultra-fast all-in-one FASTQ preprocessor. *Bioinformatics*, 34(17), i884–i890. [https://doi.org/10.1093/bioinformatics/bty560](https://doi.org/10.1093/bioinformatics/bty560)
+
+4. **Bowtie 2**  
+   Langmead, B., & Salzberg, S. L. (2012). Fast gapped-read alignment with Bowtie 2. *Nature Methods*, 9(4), 357–359. [https://doi.org/10.1038/nmeth.1923](https://doi.org/10.1038/nmeth.1923)
+
+5. **MEGAHIT**  
+   Li, D., Liu, C.-M., Luo, R., Sadakane, K., & Lam, T.-W. (2015). MEGAHIT: an ultra-fast single-node solution for large and complex metagenomics assembly via succinct de Bruijn graph. *Bioinformatics*, 31(10), 1674–1676. [https://doi.org/10.1093/bioinformatics/btv033](https://doi.org/10.1093/bioinformatics/btv033)
+
+6. **RGI & CARD**  
+   Alcock, B. P., Huynh, W., Chalil, R., Smith, K. W., Raphenya, A. R., Wlodarski, M. A., Edalatmand, A., Petkau, A. J., Syed, S., Tsang, K. K., Baker, S. J. C., Dave, M., McCarthy, M. C., Mukiri, K. M., Nasir, J. A., Golbon, B., Imtiaz, H., Jiang, X., Kaur, K., ... McArthur, A. G. (2023). CARD 2023: expanded curation, support for machine learning, and resistome prediction at the Comprehensive Antibiotic Resistance Database. *Nucleic Acids Research*, 51(D1), D690–D697. [https://doi.org/10.1093/nar/gkac920](https://doi.org/10.1093/nar/gkac920)
+
+7. **MOB-suite**  
+   Robertson, J., & Nash, J. H. E. (2018). MOB-suite: software tools for clustering, reconstruction and typing of plasmids from draft assemblies. *Microbial Genomics*, 4(8), e000206. [https://doi.org/10.1099/mgen.0.000206](https://doi.org/10.1099/mgen.0.000206)
+
+8. **IntegronFinder**  
+   Cury, J., Jové, T., Touchon, M., Néron, B., & Rocha, E. P. C. (2016). Identification and analysis of integrons and cassette arrays in bacterial genomes. *Nucleic Acids Research*, 44(10), 4539–4550. [https://doi.org/10.1093/nar/gkw319](https://doi.org/10.1093/nar/gkw319)  
+   *(IntegronFinder 2.0 paper: Néron, B., Littner, E., Haudiquet, M., Perrin, A., Cury, J., & Rocha, E. P. C. (2022). IntegronFinder 2.0: Identification and analysis of integrons across bacteria, with a focus on antibiotic resistance in Klebsiella. Microorganisms, 10(4), 700. [https://doi.org/10.3390/microorganisms10040700](https://doi.org/10.3390/microorganisms10040700))*
+
+9. **ISEScan**  
+   Xie, Z., & Tang, H. (2017). ISEScan: automated identification of insertion sequence elements in prokaryotic genomes. *Bioinformatics*, 33(21), 3340–3347. [https://doi.org/10.1093/bioinformatics/btx433](https://doi.org/10.1093/bioinformatics/btx433)
+
+10. **curatedMetagenomicData**  
+    Pasolli, E., Schiffer, L., Manghi, P., Renson, A., Obenchain, V., Truong, D. T., Beghini, F., Malik, F., Ramos, M., Dowd, J. B., Huttenhower, C., Morgan, M. T., Segata, N., & Waldron, L. (2017). Accessible, curated metagenomic data through ExperimentHub. *Nature Methods*, 14(11), 1023–1024. [https://doi.org/10.1038/nmeth.4468](https://doi.org/10.1038/nmeth.4468)
+
+---
+
 ## Contact
 
 **Engki Nandatama**  
