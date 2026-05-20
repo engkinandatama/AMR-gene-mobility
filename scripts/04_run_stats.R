@@ -194,6 +194,48 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
       cat("    -> Saved: Fig_S2_permdisp_plot.pdf\n")
     }
 
+    # Pairwise PERMANOVA (Post-hoc comparisons between countries)
+    unique_countries <- unique(abund_df$Country)
+    if (length(unique_countries) > 2) {
+      cat("\n    Pairwise PERMANOVA (Post-hoc comparisons between countries):\n")
+      pairwise_results <- list()
+      pairs <- combn(unique_countries, 2, simplify = FALSE)
+      
+      for (pair in pairs) {
+        pair_df <- abund_df %>% filter(Country %in% pair)
+        if (nrow(pair_df) >= 3) {
+          pair_matrix <- pair_df[, num_cols]
+          pair_bc <- vegdist(pair_matrix, method = "bray")
+          
+          pair_perm <- tryCatch({
+            adonis2(pair_bc ~ Country, data = pair_df, permutations = n_permutations)
+          }, error = function(e) NULL)
+          
+          if (!is.null(pair_perm)) {
+            p_val <- pair_perm$`Pr(>F)`[1]
+            r2 <- pair_perm$R2[1]
+            f_stat <- pair_perm$F[1]
+            
+            pairwise_results[[paste(pair, collapse = " vs ")]] <- data.frame(
+              Comparison = paste(pair, collapse = " vs "),
+              F_value = f_stat,
+              R2 = r2,
+              p_value = p_val,
+              stringsAsFactors = FALSE
+            )
+          }
+        }
+      }
+      
+      if (length(pairwise_results) > 0) {
+        pairwise_df <- do.call(rbind, pairwise_results)
+        pairwise_df$p_adjusted <- p.adjust(pairwise_df$p_value, method = p_adjust)
+        print(pairwise_df)
+        write.csv(pairwise_df, file.path(tab_dir, "Table_Pairwise_PERMANOVA.csv"), row.names = FALSE)
+        cat("    -> Saved: Table_Pairwise_PERMANOVA.csv\n")
+      }
+    }
+
     # Multi-factor PERMANOVA (controlling for covariates Age, Gender)
     factors_to_try <- c("Gender", "Age")
     valid_factors <- c()
@@ -419,6 +461,7 @@ if (exists("fisher_df")) sheets[["Fisher AMR-MGE"]] <- fisher_df
 if (exists("permanova_result")) sheets[["PERMANOVA Beta Diversity"]] <- as.data.frame(permanova_result)
 if (exists("multi_permanova") && !is.null(multi_permanova)) sheets[["Multi-Factor PERMANOVA"]] <- as.data.frame(multi_permanova)
 if (exists("permutest_disp") && !is.null(permutest_disp)) sheets[["PERMDISP Homogeneity"]] <- as.data.frame(permutest_disp$tab)
+if (exists("pairwise_df")) sheets[["Pairwise PERMANOVA"]] <- pairwise_df
 
 write_xlsx(sheets, file.path(tab_dir, "Supplementary_Statistics.xlsx"))
 cat("    -> Saved: Supplementary_Statistics.xlsx\n")
