@@ -146,6 +146,9 @@ def main():
     country      = meta.get("country", "Unknown")
     country_name = meta.get("country_name", "Unknown")
     region       = meta.get("region", "Unknown")
+    age          = meta.get("age", "Unknown")
+    gender       = meta.get("gender", "Unknown")
+    study_name   = meta.get("study_name", "Unknown")
 
     # --- Path Input ---
     rgi_file = f"{base_dir}/analysis/rgi/{sample_id}.tsv"
@@ -177,10 +180,13 @@ def main():
     rgi_df["Country"]      = country
     rgi_df["Country_Name"] = country_name
     rgi_df["Region"]       = region
+    rgi_df["Age"]          = age
+    rgi_df["Gender"]       = gender
+    rgi_df["Study"]        = study_name
 
     # Kolom yang akan disimpan
     keep_cols = [
-        "Sample_ID", "Country", "Country_Name", "Region",
+        "Sample_ID", "Country", "Country_Name", "Region", "Age", "Gender", "Study",
         "Contig", "contig_clean", "Best_Hit_ARO",
         "Drug Class", "Resistance Mechanism", "AMR Gene Family",
         "Best_Identities", "On_Plasmid", "On_Integron", "On_IS", "MGE_Type"

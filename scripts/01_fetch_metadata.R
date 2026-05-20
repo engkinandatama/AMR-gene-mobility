@@ -216,12 +216,12 @@ country_map <- data.frame(
 
 # Sample map untuk Snakemake pipeline
 sample_map <- final_samples %>%
-  select(country, accession = NCBI_accession) %>%
+  select(country, accession = NCBI_accession, age, gender, study_name) %>%
   left_join(country_map, by = "country") %>%
   # sample_id pakai ID pertama saja supaya pendek dan aman (maks 255 char di Linux)
   # accession tetap simpan semuanya (pakai ;) supaya Snakemake download semua
   mutate(sample_id = paste0(country, "_", sub(";.*", "", accession))) %>%
-  select(sample_id, country, country_name, region, accession)
+  select(sample_id, country, country_name, region, age, gender, study_name, accession)
 
 write.csv(sample_map,
           file.path(out_dir, "sample_map.csv"),

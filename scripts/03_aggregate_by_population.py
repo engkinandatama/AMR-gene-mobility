@@ -59,13 +59,19 @@ def main():
     # OUTPUT 1: AMR Abundance Matrix
     # -------------------------------------------------------
     print("[2] Membuat AMR Abundance Matrix...")
+    # Check if Age, Gender, Study columns exist in the dataframe to prevent KeyErrors
+    group_cols = ["Sample_ID", "Country", "Region"]
+    for col in ["Age", "Gender", "Study"]:
+        if col in df.columns:
+            group_cols.append(col)
+            
     amr_abundance = (
-        df.groupby(["Sample_ID", "Country", "Region", "Drug Class"])
+        df.groupby(group_cols + ["Drug Class"])
         .size()
         .reset_index(name="Count")
     )
     amr_abundance_pivot = amr_abundance.pivot_table(
-        index=["Sample_ID", "Country", "Region"],
+        index=group_cols,
         columns="Drug Class",
         values="Count",
         fill_value=0

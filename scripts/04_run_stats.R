@@ -124,7 +124,7 @@ if (length(missing_countries) > 0) {
 cat("[4A] Diversity Analysis (Menjawab Sub-question 1)...\n")
 
 # Buat matrix numerik: baris = sampel, kolom = drug class
-meta_cols <- c("Sample_ID", "Country", "Region")
+meta_cols <- c("Sample_ID", "Country", "Region", "Age", "Gender", "Study")
 num_cols <- setdiff(colnames(abund_df), meta_cols)
 
 if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
@@ -136,7 +136,9 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
   abund_df$Richness <- rowSums(species_matrix > 0)
 
   cat("    Alpha diversity (Shannon) per sampel:\n")
-  print(abund_df %>% select(Sample_ID, Country, Shannon, Richness))
+  # Print conditionally to avoid errors if Age/Gender are not loaded
+  print_cols <- intersect(c("Sample_ID", "Country", "Shannon", "Richness", "Age", "Gender"), colnames(abund_df))
+  print(abund_df %>% select(all_of(print_cols)))
 
   # Plot alpha diversity
   p_alpha <- ggplot(abund_df, aes(x = Country, y = Shannon, fill = Country)) +
@@ -151,14 +153,89 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
   ggsave(file.path(fig_dir, "Fig_S1_alpha_diversity.pdf"), p_alpha, width = 6, height = 5)
   cat("    -> Saved: Fig_S1_alpha_diversity.pdf\n")
 
-  # Beta diversity: Bray-Curtis + PERMANOVA
+  # Beta diversity: Bray-Curtis + PERMANOVA + PERMDISP
   if (nrow(abund_df) >= 3) {
     bc_dist <- vegdist(species_matrix, method = "bray")
+    
+    # Simple PERMANOVA
     permanova_result <- adonis2(bc_dist ~ Country, data = abund_df, permutations = n_permutations)
     cat("\n    PERMANOVA (Beta diversity - Bray-Curtis):\n")
     print(permanova_result)
     write.csv(as.data.frame(permanova_result), file.path(tab_dir, "Table_PERMANOVA.csv"))
     cat("    -> Saved: Table_PERMANOVA.csv\n")
+    
+    # Homogeneity of Dispersion (PERMDISP)
+    cat("\n    PERMDISP (Multivariate Homogeneity of Groups Dispersions):\n")
+    disp_result <- tryCatch({
+      betadisper(bc_dist, abund_df$Country)
+    }, error = function(e) {
+      cat("    [WARN] betadisper failed:", e$message, "\n")
+      NULL
+    })
+    
+    if (!is.null(disp_result)) {
+      permutest_disp <- tryCatch({
+        permutest(disp_result, permutations = n_permutations)
+      }, error = function(e) {
+        cat("    [WARN] permutest on betadisper failed:", e$message, "\n")
+        NULL
+      })
+      
+      if (!is.null(permutest_disp)) {
+        print(permutest_disp)
+        write.csv(as.data.frame(permutest_disp$tab), file.path(tab_dir, "Table_PERMDISP.csv"))
+        cat("    -> Saved: Table_PERMDISP.csv\n")
+      }
+      
+      # Plot PERMDISP
+      pdf(file.path(fig_dir, "Fig_S2_permdisp_plot.pdf"), width = 6, height = 5)
+      plot(disp_result, main = "Multivariate Dispersions (PERMDISP)", sub = "")
+      dev.off()
+      cat("    -> Saved: Fig_S2_permdisp_plot.pdf\n")
+    }
+
+    # Multi-factor PERMANOVA (controlling for covariates Age, Gender, Study)
+    factors_to_try <- c("Gender", "Age", "Study")
+    valid_factors <- c()
+    for (f in factors_to_try) {
+      if (f %in% colnames(abund_df)) {
+        val_vector <- abund_df[[f]]
+        non_na_count <- sum(!is.na(val_vector) & val_vector != "Unknown" & val_vector != "")
+        unique_count <- length(unique(val_vector[!is.na(val_vector) & val_vector != "Unknown" & val_vector != ""]))
+        if (non_na_count >= 3 && unique_count >= 2) {
+          valid_factors <- c(valid_factors, f)
+        }
+      }
+    }
+
+    if (length(valid_factors) > 0) {
+      clean_df <- abund_df
+      for (f in valid_factors) {
+        clean_df <- clean_df %>% filter(!is.na(.data[[f]]) & .data[[f]] != "Unknown" & .data[[f]] != "")
+      }
+      
+      if (nrow(clean_df) >= 4) {
+        clean_matrix <- clean_df[, num_cols]
+        clean_bc <- vegdist(clean_matrix, method = "bray")
+        
+        multi_formula <- as.formula(paste("clean_bc ~ Country +", paste(valid_factors, collapse = " + ")))
+        cat("\n    Multi-factor PERMANOVA (controlling for covariates):\n")
+        cat("    Formula:", deparse(multi_formula), "\n")
+        
+        multi_permanova <- tryCatch({
+          adonis2(multi_formula, data = clean_df, permutations = n_permutations)
+        }, error = function(e) {
+          cat("    [WARN] Multi-factor PERMANOVA failed:", e$message, "\n")
+          NULL
+        })
+        
+        if (!is.null(multi_permanova)) {
+          print(multi_permanova)
+          write.csv(as.data.frame(multi_permanova), file.path(tab_dir, "Table_MultiFactor_PERMANOVA.csv"))
+          cat("    -> Saved: Table_MultiFactor_PERMANOVA.csv\n")
+        }
+      }
+    }
   }
 } else {
   cat("    [WARN] Data sampel terlalu sedikit untuk diversity analysis (butuh >=3 sampel)\n")
@@ -340,6 +417,8 @@ sheets <- list(
 )
 if (exists("fisher_df")) sheets[["Fisher AMR-MGE"]] <- fisher_df
 if (exists("permanova_result")) sheets[["PERMANOVA Beta Diversity"]] <- as.data.frame(permanova_result)
+if (exists("multi_permanova") && !is.null(multi_permanova)) sheets[["Multi-Factor PERMANOVA"]] <- as.data.frame(multi_permanova)
+if (exists("permutest_disp") && !is.null(permutest_disp)) sheets[["PERMDISP Homogeneity"]] <- as.data.frame(permutest_disp$tab)
 
 write_xlsx(sheets, file.path(tab_dir, "Supplementary_Statistics.xlsx"))
 cat("    -> Saved: Supplementary_Statistics.xlsx\n")
