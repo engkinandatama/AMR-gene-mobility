@@ -227,8 +227,62 @@ if (length(network_metrics) > 0) {
   cat("    -> Saved: Table_Network_Metrics.csv\n")
 }
 
+# ============================================================
+# Centrality Analysis & HGT Hubs Identification
+# ============================================================
+cat("\n[4] Mengidentifikasi HGT Hubs menggunakan centrality metrics...\n")
+
+centrality_list <- list()
+
+for (ctr in countries) {
+  g <- graphs[[ctr]]
+  if (!is.null(g)) {
+    # Hitung centrality metrics
+    deg <- degree(g)
+    btw <- betweenness(g, directed = FALSE, normalized = TRUE)
+    
+    # Buat data frame untuk semua node di network negara ini
+    df_cent <- data.frame(
+      Country = ctr,
+      Node_Name = V(g)$name,
+      Node_Type = V(g)$node_type,
+      Degree = deg,
+      Betweenness = btw,
+      stringsAsFactors = FALSE
+    )
+    
+    # Sortir berdasarkan degree dan betweenness, lalu ambil top 5
+    df_cent <- df_cent %>%
+      arrange(desc(Degree), desc(Betweenness))
+    
+    centrality_list[[ctr]] <- df_cent
+  }
+}
+
+if (length(centrality_list) > 0) {
+  centrality_df <- do.call(rbind, centrality_list)
+  rownames(centrality_df) <- NULL
+  
+  # Simpan semua nilai centrality
+  write.csv(centrality_df, file.path(tab_dir, "Table_Network_Centrality_All.csv"), row.names = FALSE)
+  cat("    -> Saved: Table_Network_Centrality_All.csv\n")
+  
+  # Ambil Top 3 Hubs (Super-Carriers) per negara untuk manuskrip
+  top_hubs_df <- centrality_df %>%
+    group_by(Country) %>%
+    arrange(desc(Degree), desc(Betweenness), .by_group = TRUE) %>%
+    slice_head(n = 3) %>%
+    ungroup()
+  
+  write.csv(top_hubs_df, file.path(tab_dir, "Table_Network_Centrality_Hubs.csv"), row.names = FALSE)
+  cat("    -> Saved: Table_Network_Centrality_Hubs.csv\n")
+  
+  cat("\n    Top 3 HGT Hubs per Country:\n")
+  print(top_hubs_df)
+}
+
 cat("\n============================================================\n")
 cat("SELESAI - Phase 5 Network Analysis\n")
 cat("  figures/Fig3_Network_*.pdf  : Network per populasi\n")
-cat("  tables/Table_Network_*.csv  : Metrics dan Jaccard similarity\n")
+cat("  tables/Table_Network_*.csv  : Metrics, Jaccard, dan Hubs\n")
 cat("============================================================\n")
