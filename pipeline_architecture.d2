@@ -1,0 +1,103 @@
+# D2 script for AMR-MGE Co-localization Pipeline Architecture
+# Copy this code and paste it into https://play.d2lang.com/ to render a beautiful diagram!
+
+direction: right
+
+classes: {
+  input_style: {
+    style: {
+      fill: "#e1f5fe"
+      stroke: "#0288d1"
+      border-radius: 5
+    }
+  }
+  process_style: {
+    style: {
+      fill: "#ffffff"
+      stroke: "#37474f"
+      border-radius: 8
+    }
+  }
+  output_style: {
+    style: {
+      fill: "#e8f5e9"
+      stroke: "#2e7d32"
+      border-radius: 5
+    }
+  }
+}
+
+# --- INPUTS ---
+sample_map: "Metadata Map\n(sample_map.csv)" { class: input_style; shape: document }
+hg38: "hg38 Index\n(Bowtie2)" { class: input_style; shape: cylinder }
+card_db: "CARD Database\n(RGI)" { class: input_style; shape: cylinder }
+
+# --- ASSEMBLY ---
+assembly: "snakemake assembly" {
+  style {
+    stroke-dash: 5
+    stroke: "#5c6bc0"
+  }
+  
+  processing: "QC & Host Depletion\n(fastp & Bowtie2)" { class: process_style; shape: oval }
+  megahit: "Assembly & Filter\n(MEGAHIT & filter_contigs)" { class: process_style; shape: oval }
+  
+  processing -> megahit
+}
+sample_map -> assembly.processing
+hg38 -> assembly.processing
+
+contigs: "Filtered Contigs\n({sample}.fa)" { class: output_style; shape: document }
+assembly.megahit -> contigs
+
+# --- ANNOTATION & AGGREGATION ---
+annot_agg: "snakemake annotation_aggregation" {
+  style {
+    stroke-dash: 5
+    stroke: "#ffa726"
+  }
+  
+  profiling: "AMR & MGE Profiling\n(RGI, MOB-suite, ISEScan, IntegronFinder)" { class: process_style; shape: oval }
+  coloc: "Co-localization mapping\n(02_find_colocalization.py)" { class: process_style; shape: oval }
+  agg: "Population Aggregation\n(03_aggregate_by_population.py)" { class: process_style; shape: oval }
+  
+  profiling -> coloc -> agg
+}
+contigs -> annot_agg.profiling
+card_db -> annot_agg.profiling
+
+combined: "Combined Abundance\n(_combined.csv)" { class: output_style; shape: document }
+all_coloc: "Co-localization Table\n(_all_coloc.csv)" { class: output_style; shape: document }
+
+annot_agg.agg -> combined
+annot_agg.agg -> all_coloc
+
+# --- STATISTICS ---
+stats: "snakemake statistics" {
+  style {
+    stroke-dash: 5
+    stroke: "#66bb6a"
+  }
+  
+  r_stats: "Statistical Analyses\n(04_run_stats.R)" { class: process_style; shape: code }
+}
+combined -> stats.r_stats
+all_coloc -> stats.r_stats
+
+plots: "Figures & Tables\n(Diversity & Stats)" { class: output_style; shape: document }
+stats.r_stats -> plots
+
+# --- NETWORKS ---
+networks: "snakemake networks" {
+  style {
+    stroke-dash: 5
+    stroke: "#ab47bc"
+  }
+  
+  r_networks: "Bipartite Networks\n(05_network_analysis.R)" { class: process_style; shape: code }
+}
+combined -> networks.r_networks
+all_coloc -> networks.r_networks
+
+net_plots: "Network Plots\n& Centrality Tables" { class: output_style; shape: document }
+networks.r_networks -> net_plots

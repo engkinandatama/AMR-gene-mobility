@@ -15,7 +15,7 @@ os.makedirs(f"{OUT}/benchmarks", exist_ok=True)
 os.makedirs(f"{OUT}/tmp", exist_ok=True)
 
 # Rule yang harus jalan di Login Node
-localrules: all, download_sra, cleanup_intermediates, download_hg38_fasta
+localrules: all, deep_analysis, download_sra, cleanup_intermediates, download_hg38_fasta
 
 # --- METADATA LOADING ---
 # Support dua cara: --config sample_map=... atau dari config.yaml
@@ -57,6 +57,14 @@ rule networks:
     """Run Bipartite Network Construction and centrality metrics"""
     input:
         expand(f"{OUT}/analysis/networks/{{population}}/network_done.flag", population=POPULATIONS)
+
+rule deep_analysis:
+    """[MANUAL] Run Deep Plasmid & Integron Analysis — jalankan manual setelah rule all selesai.
+    Gunakan: snakemake deep_analysis --profile profiles/slurm --use-conda
+    """
+    input:
+        expand(f"{OUT}/analysis/plasmid_network/{{population}}/network_done.flag", population=POPULATIONS),
+        expand(f"{OUT}/analysis/integron_deep/{{population}}/integron_report_done.flag", population=POPULATIONS)
 
 # PHASE 1: SRA Download & HG38 Index
 rule download_sra:
@@ -523,3 +531,85 @@ rule cleanup_intermediates:
         rm -f "{OUT}/data/qc_reads/{wildcards.sample}"*.fastq.gz
         rm -f "{OUT}/data/nonhost_reads/{wildcards.sample}"*.fastq.gz
         """
+
+# ============================================================
+# DEEP ANALYSIS MODULE A: Plasmid Replicon Typing & Network
+# ============================================================
+
+rule plasmid_network:
+    """[DEEP] Plasmid Replicon Typing & Pandemic Plasmid Network Analysis (per population)"""
+    input:
+        mob_reports = expand(f"{OUT}/analysis/mobsuite/{{sample}}/contig_report.txt", sample=SAMPLES),
+        sample_map  = _sample_map
+    output:
+        flag        = f"{OUT}/analysis/plasmid_network/{{population}}/network_done.flag"
+    benchmark:
+        f"{OUT}/benchmarks/plasmid_network_{{population}}.tsv"
+    conda:
+        "envs/python.yaml"
+    log:
+        f"{OUT}/logs/plasmid_network_{{population}}.log"
+    threads: 2
+    resources:
+        mem_mb    = 8000,
+        partition = "short",
+        runtime   = 60
+    shell:
+        """
+        mkdir -p "{OUT}/analysis/plasmid_network/{wildcards.population}"
+        python scripts/06_plasmid_network.py \
+            --base-dir   "{OUT}" \
+            --output-dir "{OUT}/analysis/plasmid_network/{wildcards.population}" \
+            --pop        "{wildcards.population}" \
+            --sample-map "{_sample_map}" \
+            --min-regions 2 \
+            --flag-file  "{output.flag}" 2>&1 | tee -a "{log}"
+        """
+
+# ============================================================
+# DEEP ANALYSIS MODULE B: Deep Integron Analysis
+# ============================================================
+
+rule integron_deep:
+    """[DEEP] Deep Integron Analysis — Cassette Composition & Class Distribution (per population)"""
+    input:
+        integron_files = expand(f"{OUT}/analysis/integron/{{sample}}.tsv", sample=SAMPLES),
+        coloc_csv      = f"{OUT}/analysis/aggregated/{{population}}_all_coloc.csv",
+        sample_map     = _sample_map
+    output:
+        flag           = f"{OUT}/analysis/integron_deep/{{population}}/integron_report_done.flag"
+    benchmark:
+        f"{OUT}/benchmarks/integron_deep_{{population}}.tsv"
+    conda:
+        "envs/r_stats.yaml"
+    log:
+        f"{OUT}/logs/integron_deep_{{population}}.log"
+    threads: 2
+    resources:
+        mem_mb    = 8000,
+        partition = "short",
+        runtime   = 60
+    shell:
+        """
+        mkdir -p "{OUT}/analysis/integron_deep/{wildcards.population}"
+        # Step 1: Python — ekstraksi dan klasifikasi data integron
+        python scripts/07_integron_deep.py \
+            --base-dir   "{OUT}" \
+            --output-dir "{OUT}/analysis/integron_deep/{wildcards.population}" \
+            --pop        "{wildcards.population}" \
+            --sample-map "{_sample_map}" \
+            --coloc-csv  "{input.coloc_csv}" \
+            --flag-file  "{output.flag}.py_done" 2>&1 | tee -a "{log}"
+
+        # Step 2: R — visualisasi dan statistik
+        Rscript scripts/08_integron_stats.R \
+            --class_dist   "{OUT}/analysis/integron_deep/{wildcards.population}/class_distribution.csv" \
+            --cassette     "{OUT}/analysis/integron_deep/{wildcards.population}/cassette_matrix.csv" \
+            --specificity  "{OUT}/analysis/integron_deep/{wildcards.population}/region_specificity.csv" \
+            --amr_link     "{OUT}/analysis/integron_deep/{wildcards.population}/amr_integron_link.csv" \
+            --output_dir   "{OUT}/analysis/integron_deep/{wildcards.population}" \
+            --pop          "{wildcards.population}" 2>&1 | tee -a "{log}"
+
+        touch "{output.flag}"
+        """
+
