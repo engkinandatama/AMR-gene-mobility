@@ -81,6 +81,11 @@ rule download_sra:
     log:
         f"{OUT}/logs/download_{{sample}}.log"
     threads: 1
+    resources:
+        # Concurrency knob to protect the scratch quota: each download stages tens of
+        # GB of .sra + FASTQ. Cap parallel downloads with e.g. --resources download_slots=6
+        # (no effect unless that flag is passed, so default behaviour is unchanged).
+        download_slots=1
     shell:
         """
         exec > "{log}" 2>&1
