@@ -75,7 +75,7 @@ rule download_sra:
     benchmark:
         f"{OUT}/benchmarks/download_{{sample}}.tsv"
     params:
-        accession = lambda wildcards: pd.read_csv(config["sample_map"]).set_index("sample_id").loc[wildcards.sample, "accession"]
+        accession = lambda wildcards: pd.read_csv(config["sample_map"]).drop_duplicates(subset="sample_id", keep="first").set_index("sample_id").loc[wildcards.sample, "accession"]
     conda:
         "envs/sra-tools.yaml"
     log:
@@ -89,6 +89,11 @@ rule download_sra:
         echo "[Download] Mengunduh {wildcards.sample} ({params.accession})..."
         mkdir -p "{OUT}/data/raw_reads"
         tmp_run="{OUT}/tmp/download_{wildcards.sample}"
+        # Clean stale temp from a previously interrupted run and guarantee cleanup on any exit.
+        # The prefetch .sra + uncompressed FASTQ staged here can be tens of GB per sample;
+        # without this trap an interrupted run leaks them and fills the scratch quota.
+        rm -rf "$tmp_run"
+        trap 'rm -rf "$tmp_run"' EXIT
         mkdir -p "$tmp_run"
         
         IFS=';' read -ra ADDR <<< "{params.accession}"
@@ -103,7 +108,11 @@ rule download_sra:
             [ ! -d "$target" ] && target="${{acc}}" 
             
             fasterq-dump --split-files --threads {threads} "$target" --outdir "$tmp_run" --temp "$tmp_run"
-            
+
+            # Free the prefetched .sra right away; fasterq-dump has already extracted it.
+            # Halves the peak footprint (otherwise .sra + FASTQ coexist).
+            rm -rf "$tmp_run/${{acc}}"
+
             # Deteksi: Apakah Paired-End (_1 dan _2) atau Single-End (.fastq saja)?
             if [ -f "$tmp_run/${{acc}}_1.fastq" ]; then
                 cat "$tmp_run/${{acc}}_1.fastq" >> "$tmp_run/combined_1.fastq"
@@ -392,6 +401,8 @@ rule run_integronfinder:
         mkdir -p "{OUT}/logs/integron" "{OUT}/tmp/integron"
         integron_finder "{input.fasta}" --outdir "{OUT}/tmp/integron/{wildcards.sample}" --cpu {threads} --local-max >> "{log}" 2>&1
         find "{OUT}/tmp/integron/{wildcards.sample}" -name "*.integrons" | xargs cat > "{output.tsv}" 2>>"{log}" || touch "{output.tsv}"
+        # Clean scratch working dir once the result TSV is extracted (avoids tmp/ buildup).
+        rm -rf "{OUT}/tmp/integron/{wildcards.sample}"
         """
 
 rule run_isescan:
@@ -418,6 +429,8 @@ rule run_isescan:
         isescan.py --seqfile "{OUT}/tmp/isescan/{wildcards.sample}_clean.fa" --output "{OUT}/tmp/isescan/{wildcards.sample}" --nthread {threads} >> "{log}" 2>&1
         find "{OUT}/tmp/isescan/{wildcards.sample}" -name "*.tsv" | head -1 | xargs -I_F_ cp _F_ "{output.tsv}" 2>>"{log}"
         [ -f "{output.tsv}" ] || touch "{output.tsv}"
+        # Clean scratch working dir + the full-contig copy staged for ISEScan.
+        rm -rf "{OUT}/tmp/isescan/{wildcards.sample}" "{OUT}/tmp/isescan/{wildcards.sample}_clean.fa"
         """
 
 rule colocalization:

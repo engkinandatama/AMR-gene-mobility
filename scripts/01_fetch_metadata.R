@@ -223,6 +223,15 @@ sample_map <- final_samples %>%
   mutate(sample_id = paste0(country, "_", sub(";.*", "", accession))) %>%
   select(sample_id, country, country_name, region, age, gender, study_name, accession)
 
+# Guarantee unique sample_id: two different subjects can share the same first
+# accession, producing a collision. Downstream tools index the map by sample_id
+# and require uniqueness (pandas set_index(...).to_dict("index") errors otherwise).
+n_dup_ids <- sum(duplicated(sample_map$sample_id))
+if (n_dup_ids > 0) {
+  cat(sprintf("  ⚠ WARNING: %d sample_id duplikat terdeteksi — hanya baris pertama dipertahankan.\n", n_dup_ids))
+  sample_map <- sample_map %>% distinct(sample_id, .keep_all = TRUE)
+}
+
 write.csv(sample_map,
           file.path(out_dir, "sample_map.csv"),
           row.names = FALSE, quote = FALSE)

@@ -136,6 +136,9 @@ def main():
     # Load sample map
     try:
         sample_map = pd.read_csv(args.sample_map)
+        # Drop duplicate sample_id rows: to_dict("index") requires a unique index,
+        # and the Snakefile itself already deduplicates via df_map["sample_id"].unique().
+        sample_map = sample_map.drop_duplicates(subset="sample_id", keep="first")
         map_dict = sample_map.set_index("sample_id").to_dict("index")
     except Exception as e:
         print(f"  [ERROR] Gagal membaca sample_map.csv: {e}", file=sys.stderr)
