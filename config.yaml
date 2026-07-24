@@ -2,6 +2,11 @@
 # config.yaml — Konfigurasi Sentral Pipeline AMR Gene Mobility
 # ============================================================
 
+# Defaults below target the small pilot. The full run is launched by overriding these
+# on the command line, e.g.:
+#   snakemake all --profile profiles/slurm --use-conda \
+#       --config run_id=full_run sample_map=data/metadata/sample_map.csv \
+#       --resources download_slots=6
 run_id: "pilot_run"
 sample_map: "data/metadata/pilot_map.csv"
 

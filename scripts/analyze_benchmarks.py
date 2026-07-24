@@ -1,9 +1,17 @@
 import os
 import glob
+import argparse
 import pandas as pd
 
 def main():
-    bench_dir = r"E:\amien_\Downloads\AMR\pilot_run\benchmarks"
+    parser = argparse.ArgumentParser(description="Summarise Snakemake benchmark TSVs per rule")
+    parser.add_argument("--bench-dir", required=True,
+                        help="Directory containing *.tsv benchmark files (e.g. results/<run>/benchmarks)")
+    parser.add_argument("--output", default="benchmark_summary.csv",
+                        help="Output CSV path (default: benchmark_summary.csv)")
+    args = parser.parse_args()
+
+    bench_dir = args.bench_dir
     if not os.path.exists(bench_dir):
         print(f"Benchmark directory not found: {bench_dir}")
         return
@@ -81,8 +89,8 @@ def main():
     print(summary[["rule", "count", "mean_time_hms", "max_time_hms", "mean_rss_mb", "max_rss_mb"]].to_string(index=False))
     
     # Write to csv
-    summary.to_csv("benchmark_summary.csv", index=False)
-    print("\nSummary saved to benchmark_summary.csv")
+    summary.to_csv(args.output, index=False)
+    print(f"\nSummary saved to {args.output}")
 
 if __name__ == "__main__":
     main()

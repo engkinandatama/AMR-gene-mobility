@@ -34,6 +34,13 @@ tryCatch({
   HAVE_HEATMAP <- TRUE
 }, error = function(e) { HAVE_HEATMAP <<- FALSE })
 
+# lme4 for the mixed-model mobility analysis (4G). Loaded defensively so the script
+# still runs if the r_stats conda env has not yet been rebuilt with r-lme4.
+tryCatch({
+  suppressPackageStartupMessages(library(lme4))
+  HAVE_LME4 <- TRUE
+}, error = function(e) { HAVE_LME4 <<- FALSE })
+
 cat("============================================================\n")
 cat("[Phase 4] Analisis Statistik Komprehensif - AMR Gene Mobility\n")
 cat("============================================================\n\n")
@@ -459,9 +466,15 @@ if (length(num_cols) > 0 && nrow(abund_df) >= 3) {
 #=============================================================
 cat("\n[4B] AMR Class Comparison - Kruskal-Wallis (Sub-question 1)...\n")
 
+# Complete the sample x drug-class grid with zeros: a sample with no hits for a given
+# drug class is a structural zero, not missing data. Counting only observed combos
+# (as count() alone does) drops those zeros and biases the Kruskal-Wallis test.
+sample_meta <- coloc_df %>% distinct(Sample_ID, Country, Region)
 amr_long <- coloc_df %>%
-  count(Sample_ID, Country, Region, `Drug.Class`, name = "Count") %>%
-  rename(Drug_Class = `Drug.Class`)
+  count(Sample_ID, `Drug.Class`, name = "Count") %>%
+  rename(Drug_Class = `Drug.Class`) %>%
+  tidyr::complete(Sample_ID, Drug_Class, fill = list(Count = 0)) %>%
+  left_join(sample_meta, by = "Sample_ID")
 
 # Kruskal-Wallis per kelas AMR
 kw_results <- amr_long %>%
@@ -532,6 +545,9 @@ if (nrow(mge_contingency) >= 2 && ncol(mge_contingency) >= 2) {
 # 4D: AMR-MGE ASSOCIATION TEST -> Sub-question 3 (INTI NOVELTY)
 #=============================================================
 cat("\n[4D] AMR-MGE Association Test - Fisher's Exact (Sub-question 3)...\n")
+cat("    [NOTE] Uji Fisher ini menggabungkan setiap hit gen sebagai observasi (pooled)\n")
+cat("           sehingga bersifat DESKRIPTIF/EKSPLORATIF, bukan inferensi. Inferensi\n")
+cat("           utama yang memperhitungkan pseudoreplikasi ada di blok 4G (GLMM).\n")
 
 # Fisher's exact untuk setiap pasangan AMR class × MGE type (mobile vs chromosomal)
 coloc_df <- coloc_df %>%
@@ -617,8 +633,10 @@ if (n_distinct(mobility_df$Country) >= 2 && nrow(mobility_df) >= 3) {
     # Post-hoc Dunn's Test if significant
     if (mobility_kw$p.value < alpha_val) {
       cat("    Running Post-hoc Dunn's Test on Mobility Index...\n")
+      # dunn.test expects lower-case adjustment codes ("bh", "bonferroni", ...),
+      # whereas p.adjust uses "BH". tolower() maps them correctly.
       dunn_res <- tryCatch({
-        dunn.test(mobility_df$Mobility_Index, mobility_df$Country, method = p_adjust)
+        dunn.test(mobility_df$Mobility_Index, mobility_df$Country, method = tolower(p_adjust))
       }, error = function(e) NULL)
       
       if (!is.null(dunn_res)) {
@@ -651,6 +669,63 @@ p_mobility <- ggplot(mobility_df, aes(x = Country, y = Mobility_Index, fill = Co
 
 ggsave(file.path(fig_dir, "Fig_S4_mobility_index.pdf"), p_mobility, width = 6, height = 5)
 cat("    -> Saved: Fig_S4_mobility_index.pdf\n")
+
+#=============================================================
+# 4G: MIXED-MODEL AMR MOBILITY -> Sub-question 3 (INFERENSI UTAMA)
+#=============================================================
+cat("\n[4G] GLMM: AMR mobility ~ Country + (1|Sample) ...\n")
+# Gene-level Bernoulli outcome (mobile vs chromosomal) with a per-sample random
+# intercept. Treating each gene hit as independent (as the pooled Fisher table does)
+# is pseudoreplication; the random effect for Sample_ID corrects for within-sample
+# clustering, giving a valid test of whether mobility differs by Country.
+if (!HAVE_LME4) {
+  cat("    [SKIP] package lme4 tidak tersedia (env belum di-rebuild dengan r-lme4). GLMM dilewati.\n")
+} else {
+  coloc_df$Is_Mobile01 <- as.integer(coloc_df$MGE_Type != "Chromosomal")
+  n_ctry <- n_distinct(coloc_df$Country)
+  n_smpl <- n_distinct(coloc_df$Sample_ID)
+  if (n_ctry >= 2 && n_smpl >= 3) {
+    ctrl <- lme4::glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 2e5))
+    glmm_full <- tryCatch(
+      lme4::glmer(Is_Mobile01 ~ Country + (1 | Sample_ID),
+                  data = coloc_df, family = binomial, control = ctrl),
+      error = function(e) { cat("    [WARN] GLMM full gagal:", e$message, "\n"); NULL })
+    glmm_null <- tryCatch(
+      lme4::glmer(Is_Mobile01 ~ 1 + (1 | Sample_ID),
+                  data = coloc_df, family = binomial, control = ctrl),
+      error = function(e) { cat("    [WARN] GLMM null gagal:", e$message, "\n"); NULL })
+
+    if (!is.null(glmm_full)) {
+      # Fixed-effect coefficient table (country contrasts vs the reference level)
+      glmm_coef_df <- as.data.frame(coef(summary(glmm_full)))
+      glmm_coef_df$Term <- rownames(glmm_coef_df)
+      colnames(glmm_coef_df) <- c("Estimate", "Std_Error", "z_value", "p_value", "Term")
+      glmm_coef_df <- glmm_coef_df[, c("Term", "Estimate", "Std_Error", "z_value", "p_value")]
+      write.csv(glmm_coef_df, file.path(tab_dir, "Table_GLMM_Mobility_Coefficients.csv"), row.names = FALSE)
+      cat("    -> Saved: Table_GLMM_Mobility_Coefficients.csv\n")
+      print(glmm_coef_df)
+
+      # Likelihood-ratio test for the overall Country effect
+      if (!is.null(glmm_null)) {
+        lrt <- tryCatch(anova(glmm_null, glmm_full), error = function(e) NULL)
+        if (!is.null(lrt)) {
+          glmm_lrt_df <- data.frame(
+            Test    = "LRT: Country effect on AMR mobility (gene-level, sample random effect)",
+            Chisq   = lrt$Chisq[2],
+            Df      = lrt$Df[2],
+            p_value = lrt$`Pr(>Chisq)`[2],
+            stringsAsFactors = FALSE
+          )
+          write.csv(glmm_lrt_df, file.path(tab_dir, "Table_GLMM_Mobility_LRT.csv"), row.names = FALSE)
+          cat("    -> Saved: Table_GLMM_Mobility_LRT.csv\n")
+          print(glmm_lrt_df)
+        }
+      }
+    }
+  } else {
+    cat("    [SKIP] Butuh >=2 negara dan >=3 sampel untuk GLMM.\n")
+  }
+}
 
 #=============================================================
 # 4E: HEATMAP UTAMA (Figure 1 Manuskrip)
@@ -715,6 +790,8 @@ if (exists("mobility_df")) sheets[["Mobility Index per Sample"]] <- mobility_df
 if (exists("mobility_kw_df")) sheets[["Mobility Kruskal-Wallis"]] <- mobility_kw_df
 if (exists("dunn_df")) sheets[["Mobility Dunn PostHoc"]] <- dunn_df
 if (exists("dual_mantel_results")) sheets[["Dual-Mantel Decoupling"]] <- dual_mantel_results
+if (exists("glmm_coef_df")) sheets[["GLMM Mobility Coefficients"]] <- glmm_coef_df
+if (exists("glmm_lrt_df"))  sheets[["GLMM Mobility LRT"]] <- glmm_lrt_df
 
 write_xlsx(sheets, file.path(tab_dir, "Supplementary_Statistics.xlsx"))
 cat("    -> Saved: Supplementary_Statistics.xlsx\n")

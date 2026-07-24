@@ -16,3 +16,4 @@ dependencies:
   - r-rcolorbrewer
   - bioconductor-complexheatmap
   - r-writexl
+  - r-lme4

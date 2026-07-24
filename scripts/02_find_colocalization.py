@@ -161,11 +161,24 @@ def main():
 
     print(f"\n  [PROCESS] Sample: {sample_id}")
 
-    # --- Load RGI (Wajib ada) ---
+    # Columns kept in the colocalization output (defined once, reused for the empty case).
+    keep_cols = [
+        "Sample_ID", "Country", "Country_Name", "Region", "Age", "Gender", "Study",
+        "Contig", "contig_clean", "Best_Hit_ARO",
+        "Drug Class", "Resistance Mechanism", "AMR Gene Family",
+        "Best_Identities", "On_Plasmid", "On_Integron", "On_IS", "MGE_Type"
+    ]
+
+    # --- Load RGI ---
     rgi_df = load_rgi(rgi_file)
     if rgi_df.empty:
-        print(f"    [ERROR] RGI file tidak ditemukan atau kosong: {rgi_file}")
-        sys.exit(1)
+        # RGI ran but found no AMR genes (or the file is header-only). This is a valid
+        # biological outcome, not an error: emit an empty colocalization so aggregation
+        # for the whole population is not blocked by one AMR-free sample.
+        print(f"    [INFO] Tidak ada gen AMR di {sample_id} (RGI kosong). Menulis colocalization kosong.")
+        os.makedirs(os.path.dirname(args.out), exist_ok=True)
+        pd.DataFrame(columns=keep_cols).to_csv(args.out, index=False)
+        sys.exit(0)
 
     # --- Load MGEs (Opsional, kalau tidak ada kita anggap kosong) ---
     mob_contigs, _ = load_mobsuite(mob_file) if os.path.exists(mob_file) else (set(), None)
@@ -178,6 +191,31 @@ def main():
     rgi_df["On_IS"]       = rgi_df["contig_clean"].isin(is_contigs)
     rgi_df["MGE_Type"]    = rgi_df.apply(determine_mge_type, axis=1)
 
+    # --- QC: contig-namespace match diagnostic ---
+    # The whole co-localization result depends on AMR contig-ids matching the contig-ids
+    # each MGE tool reports. If a tool finds contigs but NONE overlap the AMR namespace,
+    # every gene silently falls back to "Chromosomal" — this surfaces that failure mode.
+    amr_contigs = set(rgi_df["contig_clean"])
+    n_amr = len(amr_contigs)
+    qc_rows = []
+    print(f"  [QC] Contig-namespace match for {sample_id} (n_amr_contigs={n_amr}):")
+    for name, mge_set in [("Plasmid", mob_contigs), ("Integron", integron_contigs), ("IS", is_contigs)]:
+        n_tool = len(mge_set)
+        n_hit  = len(amr_contigs & mge_set)
+        pct    = (100.0 * n_hit / n_amr) if n_amr else 0.0
+        warn   = (n_tool > 0 and n_hit == 0)
+        flag   = "  <-- WARNING: tool found contigs but none match AMR namespace" if warn else ""
+        print(f"        {name}: {n_hit}/{n_amr} matched ({pct:.1f}%); tool_contigs={n_tool}{flag}")
+        qc_rows.append({"sample_id": sample_id, "mge_tool": name,
+                        "n_amr_contigs": n_amr, "n_matched": n_hit,
+                        "pct_matched": round(pct, 2), "tool_contigs": n_tool,
+                        "namespace_mismatch_warning": warn})
+    try:
+        qc_path = os.path.join(os.path.dirname(args.out), f"{sample_id}_matchqc.csv")
+        pd.DataFrame(qc_rows).to_csv(qc_path, index=False)
+    except Exception as e:
+        print(f"  [WARN] Gagal menulis QC match file: {e}", file=sys.stderr)
+
     # --- Tambah metadata ---
     rgi_df["Sample_ID"]    = sample_id
     rgi_df["Country"]      = country
@@ -187,13 +225,7 @@ def main():
     rgi_df["Gender"]       = gender
     rgi_df["Study"]        = study_name
 
-    # Kolom yang akan disimpan
-    keep_cols = [
-        "Sample_ID", "Country", "Country_Name", "Region", "Age", "Gender", "Study",
-        "Contig", "contig_clean", "Best_Hit_ARO",
-        "Drug Class", "Resistance Mechanism", "AMR Gene Family",
-        "Best_Identities", "On_Plasmid", "On_Integron", "On_IS", "MGE_Type"
-    ]
+    # Keep only the declared columns (keep_cols defined above).
     available = [c for c in keep_cols if c in rgi_df.columns]
     final_df = rgi_df[available]
 
