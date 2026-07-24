@@ -27,6 +27,17 @@ import sys
 # Helper functions
 # ============================================================
 
+def first_token(x):
+    """Return the first whitespace-delimited token of a contig id.
+    MEGAHIT headers look like 'k99_10000 flag=0 multi=3.9 len=1560'. RGI (prodigal)
+    and IntegronFinder keep only 'k99_10000', but MOB-suite stores the WHOLE header
+    as contig_id. Normalising every tool to the first token is what makes the
+    co-localization join line up (otherwise plasmid/IS hits never match)."""
+    s = str(x)
+    parts = s.split()
+    return parts[0] if parts else s
+
+
 def load_rgi(rgi_file):
     """Membaca output RGI, mengembalikan DataFrame. Return kosong jika gagal."""
     try:
@@ -48,7 +59,8 @@ def load_mobsuite(mob_file):
     try:
         df = pd.read_csv(mob_file, sep="\t")
         plasmid_df = df[df["molecule_type"].str.lower() == "plasmid"]
-        plasmid_contigs = set(plasmid_df["contig_id"].astype(str))
+        # MOB-suite stores the full FASTA header in contig_id; normalise to first token.
+        plasmid_contigs = set(plasmid_df["contig_id"].astype(str).map(first_token))
         return plasmid_contigs, plasmid_df[["contig_id", "rep_type(s)", "relaxase_type(s)"]].rename(
             columns={"contig_id": "contig_clean", "rep_type(s)": "plasmid_rep_type", "relaxase_type(s)": "plasmid_relaxase"}
         )
@@ -68,7 +80,7 @@ def load_integronfinder(integron_file):
             return set(), pd.DataFrame()
         
         # Semua baris di file *.integrons adalah bagian dari integron
-        integron_contigs = set(df["ID_replicon"].astype(str))
+        integron_contigs = set(df["ID_replicon"].astype(str).map(first_token))
         summary = df[["ID_replicon"]].drop_duplicates().rename(
             columns={"ID_replicon": "contig_clean"}
         )
@@ -90,7 +102,7 @@ def load_isescan(is_file):
         # Kolom khas ISEScan: seqid (nama contig), family, cluster
         if "seqid" not in df.columns:
             return set(), pd.DataFrame()
-        is_contigs = set(df["seqid"].astype(str))
+        is_contigs = set(df["seqid"].astype(str).map(first_token))
         summary = df[["seqid", "family"]].drop_duplicates().rename(
             columns={"seqid": "contig_clean", "family": "is_family"}
         )
