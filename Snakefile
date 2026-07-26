@@ -104,19 +104,35 @@ rule download_sra:
         IFS=';' read -ra ADDR <<< "{params.accession}"
         for acc in "${{ADDR[@]}}"; do
             echo "[Download] Memproses run: ${{acc}}"
-            # Pakai -O saja yang paling standar untuk semua versi sra-tools
-            prefetch "${{acc}}" -O "$tmp_run" --max-size 50G || echo "[WARN] prefetch ${{acc}} gagal, lanjut fasterq-dump..."
-            
-            # Jika prefetch sukses, file ada di $tmp_run/acc/acc.sra
-            # Jika gagal, fasterq-dump akan coba download sendiri ke outdir
-            target="$tmp_run/${{acc}}"
-            [ ! -d "$target" ] && target="${{acc}}" 
-            
-            fasterq-dump --split-files --threads {threads} "$target" --outdir "$tmp_run" --temp "$tmp_run"
+            # Try prefetch + fasterq-dump up to 3x. A single failed run must NOT abort the
+            # whole (often multi-run) sample under bash strict mode, so failures are
+            # tolerated and the run is skipped; the sample only fails if EVERY run fails.
+            ok=0
+            for attempt in 1 2 3; do
+                prefetch "${{acc}}" -O "$tmp_run" --max-size 50G || echo "[WARN] prefetch ${{acc}} attempt ${{attempt}} gagal"
+
+                # Jika prefetch sukses, file ada di $tmp_run/acc/acc.sra
+                # Jika gagal, fasterq-dump akan coba download sendiri ke outdir
+                target="$tmp_run/${{acc}}"
+                [ ! -d "$target" ] && target="${{acc}}"
+
+                # fasterq-dump inside `if` so bash strict mode does not abort on failure
+                if fasterq-dump --split-files --threads {threads} "$target" --outdir "$tmp_run" --temp "$tmp_run"; then
+                    ok=1
+                    break
+                fi
+                echo "[WARN] fasterq-dump ${{acc}} attempt ${{attempt}} gagal, retry..."
+                rm -rf "$tmp_run/${{acc}}" "$tmp_run/${{acc}}"_*.fastq "$tmp_run/${{acc}}".fastq
+            done
 
             # Free the prefetched .sra right away; fasterq-dump has already extracted it.
             # Halves the peak footprint (otherwise .sra + FASTQ coexist).
             rm -rf "$tmp_run/${{acc}}"
+
+            if [ "$ok" -ne 1 ]; then
+                echo "[WARN] run ${{acc}} gagal setelah 3x percobaan, dilewati."
+                continue
+            fi
 
             # Deteksi: Apakah Paired-End (_1 dan _2) atau Single-End (.fastq saja)?
             if [ -f "$tmp_run/${{acc}}_1.fastq" ]; then
@@ -129,8 +145,6 @@ rule download_sra:
                 touch "$tmp_run/combined_2.fastq"
                 rm -f "$tmp_run/${{acc}}.fastq"
             fi
-            
-            rm -rf "${{acc}}"
         done
         
         # Pindahkan file mentah ke folder tujuan
