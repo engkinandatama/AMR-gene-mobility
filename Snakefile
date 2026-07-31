@@ -413,8 +413,8 @@ rule run_integronfinder:
     threads: config["resources"].get("threads_integron", 4)
     resources:
         mem_mb = 8000,
-        partition = "short",
-        runtime = 240
+        partition = "medium-small",
+        runtime = 1440   # some samples exceed 4h with --local-max; 24h avoids SLURM TIMEOUT
     shell:
         """
         mkdir -p "{OUT}/logs/integron" "{OUT}/tmp/integron"
@@ -440,7 +440,7 @@ rule run_isescan:
     resources:
         mem_mb = 32000,
         partition = "medium-small",
-        runtime = 720
+        runtime = 1440   # large assemblies can exceed 12h; 24h avoids SLURM TIMEOUT
     shell:
         """
         mkdir -p "{OUT}/logs/isescan" "{OUT}/tmp/isescan"
