@@ -112,6 +112,34 @@ def load_isescan(is_file):
         return set(), pd.DataFrame()
 
 
+def filter_rgi_hits(df, min_identity, min_coverage):
+    """Keep only high-confidence ARG hits.
+
+    RGI's Strict criterion uses curated bitscore cutoffs, which admits distant
+    homologs: on gut metagenomes the median hit identity is ~40%, and those
+    low-identity hits are overwhelmingly chromosomal housekeeping genes that
+    dilute the mobility signal. Requiring high identity AND near-full-length
+    coverage restricts the resistome to genuine acquired resistance genes.
+    Raw RGI output is retained, so a permissive sensitivity analysis remains
+    possible by re-running with lower thresholds.
+    """
+    n_before = len(df)
+    ident = pd.to_numeric(df.get("Best_Identities"), errors="coerce")
+    cov_col = "Percentage Length of Reference Sequence"
+    cov = pd.to_numeric(df.get(cov_col), errors="coerce") if cov_col in df.columns else None
+
+    mask = ident >= min_identity
+    if cov is not None:
+        mask &= cov >= min_coverage
+    else:
+        print(f"    [WARN] Kolom '{cov_col}' tidak ada; filter coverage dilewati.", file=sys.stderr)
+
+    out = df[mask.fillna(False)].copy()
+    print(f"    [FILTER] ARG high-confidence (identity>={min_identity}%, coverage>={min_coverage}%): "
+          f"{len(out)}/{n_before} hit dipertahankan ({100.0*len(out)/n_before if n_before else 0:.1f}%)")
+    return out
+
+
 def determine_mge_type(row):
     """
     Menentukan tipe MGE berdasarkan hirarki:
@@ -140,6 +168,10 @@ def main():
     parser.add_argument("--sample", required=True, help="Sample ID to process")
     parser.add_argument("--sample-map", default="data/metadata/sample_map.csv",
                         help="Path ke sample_map.csv (country/region mapping)")
+    parser.add_argument("--min-identity", type=float, default=95.0,
+                        help="Minimum %% identity to the CARD reference (default: 95)")
+    parser.add_argument("--min-coverage", type=float, default=95.0,
+                        help="Minimum %% length of the CARD reference sequence (default: 95)")
     args = parser.parse_args()
 
     base_dir = args.base_dir.rstrip("/")
@@ -178,16 +210,20 @@ def main():
         "Sample_ID", "Country", "Country_Name", "Region", "Age", "Gender", "Study",
         "Contig", "contig_clean", "Best_Hit_ARO",
         "Drug Class", "Resistance Mechanism", "AMR Gene Family",
-        "Best_Identities", "On_Plasmid", "On_Integron", "On_IS", "MGE_Type"
+        "Best_Identities", "Percentage Length of Reference Sequence",
+        "On_Plasmid", "On_Integron", "On_IS", "MGE_Type"
     ]
 
-    # --- Load RGI ---
+    # --- Load RGI, then keep only high-confidence ARG hits ---
     rgi_df = load_rgi(rgi_file)
+    if not rgi_df.empty:
+        rgi_df = filter_rgi_hits(rgi_df, args.min_identity, args.min_coverage)
+
     if rgi_df.empty:
-        # RGI ran but found no AMR genes (or the file is header-only). This is a valid
-        # biological outcome, not an error: emit an empty colocalization so aggregation
-        # for the whole population is not blocked by one AMR-free sample.
-        print(f"    [INFO] Tidak ada gen AMR di {sample_id} (RGI kosong). Menulis colocalization kosong.")
+        # Either RGI found nothing, or no hit passed the identity/coverage filter.
+        # Both are valid biological outcomes, not errors: emit an empty colocalization
+        # so aggregation for the whole population is not blocked by one such sample.
+        print(f"    [INFO] Tidak ada gen AMR high-confidence di {sample_id}. Menulis colocalization kosong.")
         os.makedirs(os.path.dirname(args.out), exist_ok=True)
         pd.DataFrame(columns=keep_cols).to_csv(args.out, index=False)
         sys.exit(0)

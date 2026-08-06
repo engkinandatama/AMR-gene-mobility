@@ -467,11 +467,16 @@ rule colocalization:
         "envs/python.yaml"
     log:
         f"{OUT}/logs/colocalization/{{sample}}.log"
+    params:
+        min_identity = config["rgi"].get("min_identity", 95),
+        min_coverage = config["rgi"].get("min_coverage", 95)
     shell:
         """
         python scripts/02_find_colocalization.py --out "{output.csv}" \
             --base-dir "{OUT}" --sample "{wildcards.sample}" \
-            --sample-map "{_sample_map}" 2>&1 | tee -a "{log}"
+            --sample-map "{_sample_map}" \
+            --min-identity {params.min_identity} \
+            --min-coverage {params.min_coverage} 2>&1 | tee -a "{log}"
         """
 
 rule aggregate_by_population:
